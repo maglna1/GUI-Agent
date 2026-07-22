@@ -149,7 +149,7 @@ class VideoScreenshotExtractor:
             H, W = frame.shape[:2]
             pt = self._primary_point_from_coords(ua.get('coords'))
             actt = act_str.lower()
-            no_coor = ("scroll" in actt) or ("wheel" in actt) or ("hotkey" in actt) or ("type" in actt) or ("presss" in actt)
+            no_coor = ("scroll" in actt) or ("wheel" in actt) or ("hotkey" in actt) or ("type" in actt) or ("press" in actt)
 
             if act_str == "DragStart at" and ua.get('path') and len(ua['path']) >= 2:
                 # === DragStart special handling ===
