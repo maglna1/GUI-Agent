@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "0.2",
+  "status": "succeeded",
+  "sourceYamlPath": "task.yaml",
+  "dryRun": "true",
+  "finishedAt": "not-a-date"
+}

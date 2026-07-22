@@ -1,0 +1,78 @@
+{
+  "$comment": "CUA 持久化契约；由 TypeScript 核心通过 Ajv 在文件边界校验。",
+  "additionalProperties": false,
+  "properties": {
+    "dryRun": {
+      "title": "Dryrun",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "finishedAt": {
+      "format": "date-time",
+      "title": "Finishedat",
+      "type": "string"
+    },
+    "midsceneResult": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Midsceneresult"
+    },
+    "schemaVersion": {
+      "const": "0.2",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "sourceYamlPath": {
+      "title": "Sourceyamlpath",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "succeeded",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "taskCount": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Taskcount"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "status",
+    "sourceYamlPath",
+    "dryRun",
+    "finishedAt"
+  ],
+  "title": "ExecutorResult",
+  "type": "object"
+}

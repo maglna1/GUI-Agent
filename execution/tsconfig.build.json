@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["cua/**/*.ts", "executors/**/*.ts"],
+  "exclude": ["tests"]
+}

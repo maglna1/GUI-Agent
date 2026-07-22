@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "0.2",
+  "scene": "browser-demo",
+  "task": "invalid-task",
+  "title": "invalid-task",
+  "description": "非法任务清单",
+  "goal": "验证未知字段",
+  "source": {
+    "tracePath": "source/showui-trace.json",
+    "processedLogPath": "source/processed-log-sc.json",
+    "conversionCommand": "npm run cua -- task init-from-trace"
+  },
+  "inputs": {},
+  "unexpected": true
+}

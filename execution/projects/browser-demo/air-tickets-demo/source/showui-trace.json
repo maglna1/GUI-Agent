@@ -1,0 +1,219 @@
+{
+  "trajectory": [
+    {
+      "step_idx": 1,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个半透明红色 X 位于浅蓝紫色的水平条带中央，该条带上方为黑色区域，下方为白色区域。全屏图显示当前为 Chrome 浏览器窗口，打开的是 New Tab，页面为 Google 主页，搜索框中显示'Search Google or type a URL'占位文字，浏览器地址栏位于上部。红色 X 对应的位置大致在 Chrome 浏览器顶部地址栏/搜索栏区域上沿的浅色条带上。",
+        "think": "局部图中的浅蓝紫色条带与 Chrome 浏览器窗口顶部的标签栏/地址栏背景颜色一致，红色 X 位于该条带中央偏上的位置。点击该位置很可能是要聚焦 Chrome 的地址栏或搜索框，以便输入新的 URL 或搜索关键词。",
+        "action": "点击 Chrome 浏览器顶部的地址栏/搜索栏区域。",
+        "expectation": "Chrome 的地址栏被激活并获得输入焦点，光标出现在地址栏内，等待用户输入新的网址或搜索内容。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Chrome 浏览器顶部的地址栏/搜索栏区域以聚焦输入框"
+        }
+      }
+    },
+    {
+      "step_idx": 2,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示 Chrome 浏览器顶部的地址栏/搜索栏中已经输入了文本'qatar airways'，文字末尾的's'被高亮蓝色选中。地址栏下方弹出 Google 搜索建议下拉框，第一条高亮显示为'qatar airways - Google Search'，其余依次为 Qatar Airways、qatar airwa、qatar airways singapore、qatar airways flights、qatar airways manage booking、qatar airways careers、qatar airways johor bahru、qatar airways check in、qatar airways news 等联想词条。全屏图显示当前为 Chrome 浏览器 New Tab 页面，地址栏中输入的内容为'qatar airways'，页面整体为 Google 新标签页背景，浏览器标签为 New Tab，地址栏与搜索栏已合并。",
+        "think": "上一步已经点击聚焦了 Chrome 的地址栏/搜索栏，当前步骤是向该输入框中输入文字'QATAR AIRWAYS'。从局部图可以看到文本'qatar airways'已经出现在地址栏中，并触发了 Google 搜索建议下拉，说明输入操作已经完成。需要在地址栏中输入完整的'QATAR AIRWAYS'作为搜索关键词，浏览器据此提供自动补全和搜索建议，准备下一步执行搜索。",
+        "action": "在 Chrome 浏览器顶部的地址栏/搜索栏中输入 QATAR AIRWAYS。",
+        "expectation": "Chrome 地址栏/搜索栏中显示已输入的'QATAR AIRWAYS'文本，浏览器弹出 Google 搜索建议下拉框，第一项为'QATAR AIRWAYS - Google Search'，光标停留在输入框末尾，等待用户按下 Enter 触发搜索。",
+        "operation": {
+          "type": "input",
+          "prompt": "在 Chrome 地址栏/搜索栏中输入 {{value}}",
+          "locatePrompt": "Chrome 地址栏/搜索栏",
+          "value": "QATAR AIRWAYS"
+        }
+      }
+    },
+    {
+      "step_idx": 3,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个半透明红色 X 位于浅灰色条带中央偏上的位置，X 上方是浅蓝紫色的 Chrome 标签栏/地址栏背景，X 下方是白色的搜索建议下拉框区域。全屏图显示 Chrome 浏览器 New Tab 页面，地址栏/搜索栏中已输入文本'qatar airways'，地址栏下方弹出 Google 搜索建议下拉框，第一项高亮为'qatar airways - Google Search'，其余依次为 Qatar Airways、qatar airways singapore、qatar airways flights、qatar airways manage booking、qatar airways careers、qatar airways johor bahru、qatar airways check in、qatar airways news、qatar airways business class 等联想词条，浏览器标签为 New Tab。",
+        "think": "上一步已在 Chrome 地址栏/搜索栏中输入了'QATAR AIRWAYS'，当前步骤是按下 Enter 键以触发 Google 搜索。局部图中的红色 X 位于地址栏与搜索建议下拉框之间的过渡区域，对应的操作是键盘上的 Enter 按键，而非点击某个界面元素。完整意图是确认输入内容并提交搜索。",
+        "action": "在 Chrome 浏览器中按 Enter 键触发搜索。",
+        "expectation": "Chrome 浏览器跳转至 Google 搜索结果页面，显示关于'QATAR AIRWAYS'关键词的搜索结果列表，地址栏中显示对应的搜索查询 URL，搜索建议下拉框消失。",
+        "operation": {
+          "type": "keyboard",
+          "prompt": "在 Chrome 地址栏/搜索栏中按 Enter 键触发 Google 搜索",
+          "key": "Enter"
+        }
+      }
+    },
+    {
+      "step_idx": 4,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个半透明红色 X 位于 Google 搜索结果中一条赞助广告（Sponsored）链接标题上方，标题为'Qatar Airways Official Website'（蓝色可点击链接），X 大致落在'Qatar'或标题首词区域；标题下方为网址'www.qatarairways.com › sg'以及描述文字'Book on the Official Website — Explore the world with us...'，左侧为卡塔尔航空的紫色 oryx 标志。全屏图显示 Chrome 浏览器正在显示 Google 搜索结果页面，搜索关键词为'qatar airways'，页面顶部为 All / News / Images / Videos / Short videos / Shopping / More / Tools 标签栏；搜索结果区第一条为 Sponsored 的'Qatar Airways Official Website'广告（来自 qatarairways.com），其下展开多个子链接（Book Your Flight Tickets Today、Special fares from SGD788、Book and Fly、Join Privilege Club & Fly、25 Kg+ Baggage Allowance）；第二条为自然结果'Qatar Airways: Book Flights - Book & Fly from Singapore'；右侧为来自 Wikipedia 的 Qatar Airways 知识面板（包含 Hubs、CEO、Headquarters、Founded、Alliance、Destinations、Employees 等信息）。",
+        "think": "前三步已经在 Chrome 地址栏中输入'QATAR AIRWAYS'并按 Enter 触发 Google 搜索，当前页面已经进入搜索结果页。根据上下文，用户的整体目标是访问卡塔尔航空官网，因此接下来应该点击搜索结果中的官方链接。局部图中的红色 X 准确落在首条 Sponsored 广告'Qatar Airways Official Website'（qatarairways.com）的标题区域，属于一个普通超链接控件，点击会直接在当前标签页导航到 qatarairways.com。",
+        "action": "点击 Google 搜索结果中第一条 Sponsored 广告链接'Qatar Airways Official Website'，进入卡塔尔航空官网。",
+        "expectation": "Chrome 当前标签页跳转至卡塔尔航空官网（qatarairways.com），页面加载卡塔尔航空的预订/首页界面，左上角显示 QATAR 品牌标志与官网导航，搜索结果页面被替换。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Google 搜索结果中第一条 Sponsored 广告链接'Qatar Airways Official Website'（来自 qatarairways.com）以打开卡塔尔航空官网"
+        }
+      }
+    },
+    {
+      "step_idx": 5,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个半透明红色 X 位于一个标有 'From' 的输入框中央偏上位置，输入框上方是 'Return'（已选中，紫色圆点）和 'One way' 单选按钮行，下方是一个 'Book using Avios' 复选框。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），页面顶部为 QATAR AIRWAYS 品牌 logo 和导航栏（Explore / Book / Experience / Privilege Club / Help / EN / Log in | Sign up），主图为 'Escape for less - Discover Europe and Americas from SGD788' 横幅横幅带 'Book now' 按钮；下方为 'Book a flight' 预订小组件，标签页 Book a flight / Stopover / Packages / Manage / Check in / Flight status，单选项 Return（默认选中）/ One way / Multi-city，输入行包含 From、To（带交换图标）、Departure 12 Sep 2025、Return 19 Sep 2025、Passengers / Class 1 Passenger Economy，最下方为 Book using Avios 复选框、Add promo code 链接和紫色 Search flights 按钮。",
+        "think": "上一步已通过 Google 搜索进入卡塔尔航空官网首页，当前页面已经渲染出 'Book a flight' 预订组件，行程类型默认为 Return，出发日期 12 Sep 2025、返程 19 Sep 2025、舱位 1 位乘客经济舱。局部图中的红色 X 落在 From 输入框上，这是航班搜索的出发地输入控件，是典型的文本输入框。点击该输入框会让其获得焦点，光标定位在 From 框中，方便用户键入出发城市/机场（例如 Singapore 或 SIN），为后续输入目的地、点击 Search flights 完成搜索做准备。",
+        "action": "点击 Book a flight 预订小组件中的 From（出发地）输入框，使其获得焦点。",
+        "expectation": "From 输入框被激活并显示闪烁的文本光标，可能弹出与城市/机场相关的自动补全建议列表（通常以 Singapore / SIN 为默认联想），输入框边框高亮，等待用户输入出发地。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Book a flight 预订组件中的 From（出发地）输入框以使其获得焦点，准备输入出发城市或机场"
+        }
+      }
+    },
+    {
+      "step_idx": 6,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个半透明红色 X 位于深酒红色的圆角按钮上，按钮上的白色文字为'Accept al'（即 Accept all），按钮上方可见文字片段'ent to usage of'（属于 consent to usage of …），按钮下方是 Windows 任务栏的天气小部件，显示 26°C Mostly clou… 区域。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），页面顶部为 QATAR AIRWAYS logo 与导航栏（Explore / Book / Experience / Privilege Club / Help / EN / Log in | Sign up），顶部还有一条蓝色提示条'Operations Unaffected by Recent Events in Doha'，主图为'Escape for less - Discover Europe and Americas from SGD788'横幅，下方是 Book a flight 预订组件；页面最底部叠加了一个白色的 Cookie 同意横幅，包含说明文字和两个按钮：左侧为白底紫边的 'Cookie preferences' 按钮，右侧为深酒红底白字的 'Accept all' 按钮。",
+        "think": "用户从 Google 搜索进入卡塔尔航空官网后，页面最底部弹出 Cookie 同意横幅遮挡了预订小组件的下半部分（包括 Search flights 按钮等），影响后续的航班搜索操作。局部图中的红色 X 准确落在 'Accept all' 按钮上，这是一个典型的 Cookie 同意操作按钮。点击该按钮会接受全部 Cookie 并关闭横幅，让用户能够继续正常使用页面的预订功能（如点击 Search flights 完成搜索）。",
+        "action": "点击卡塔尔航空官网底部的 Cookie 同意横幅中的 Accept all 按钮，接受全部 Cookie 并关闭横幅。",
+        "expectation": "页面底部的 Cookie 同意横幅立即消失，预订小组件完整露出（包括 Book using Avios 复选框、Add promo code 链接以及紫色的 Search flights 按钮），用户可以继续与底层的航班预订控件进行交互。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击卡塔尔航空官网底部 Cookie 同意横幅中的 Accept all 按钮以接受全部 Cookie 并关闭横幅"
+        }
+      }
+    },
+    {
+      "step_idx": 7,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个半透明红色 X 位于标有 'From' 的输入框内，输入框上方面板有 Return（默认选中，紫色圆点）和 One way 单选按钮，下方可见 Book using Avios 复选框。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Cookie 同意横幅已消失，页面顶部为 QATAR AIRWAYS logo 与导航栏，主图为 'Escape for less - Discover Europe and Americas from SGD788' 横幅带 Book now 按钮，下方为 Book a flight 预订组件，标签页 Book a flight / Stopover / Packages / Manage / Check in / Flight status，行程类型 Return（默认）/ One way / Multi-city，From 与 To 输入框并排显示，中间为交换图标，右侧为 Departure 12 Sep 2025、Return 19 Sep 2025 以及 Passengers / Class 1 Passenger Economy，最下方为 Book using Avios 复选框、Add promo code 链接和紫色 Search flights 按钮。",
+        "think": "Cookie 横幅已经在上一步被关闭，预订组件完整露出。用户接下来需要填写出发地（From）。从 URL 的 'en-sg' 区域设置以及页面整体语境来看，出发地应该是 Singapore / SIN。局部图中的红色 X 准确落在 From 输入框上，这是一个文本输入控件，点击会激活输入框、显示闪烁光标，并通常会弹出与 Singapore 相关的自动补全建议，为下一步输入出发城市做准备。",
+        "action": "点击 Book a flight 预订组件中的 From（出发地）输入框，使其获得焦点。",
+        "expectation": "From 输入框被激活并显示闪烁的文本光标，输入框边框高亮，可能弹出城市/机场自动补全建议列表（通常以 Singapore / SIN 为默认联想），等待用户输入出发地。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Book a flight 预订组件中的 From（出发地）输入框以使其获得焦点，准备输入出发城市或机场"
+        }
+      }
+    },
+    {
+      "step_idx": 8,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示 Book a flight 预订组件中 From 输入框处于聚焦状态（紫色高亮边框），输入框内已显示部分文本 'Singap'，光标位于文本末尾；输入框下方弹出了一个自动补全下拉列表，列出以 'Sa' 开头的城市/机场建议：第一条 Sacramento, United States of America（Sacramento Executive Airport，代码 SAC），第二条 Sacramento, United States of America（Sacramento International Airport，代码 SMF，带飞机图标），第三条 Samarinda, Indonesia（Aji Pangeran Tumenggung Airport，代码 AAP），第四条 Sao Paulo, Brazil（Sao Paulo，代码 SAO），第五条 Sao Paulo, Brazil（Guarulhos - Governador André Franco Montoro International Airport，代码 GRU），第六条 Sao Jose do Rio Preto, Brazil（SJP），列表右侧有滚动条指示还有更多项。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Cookie 横幅已消失，页面顶部为 QATAR AIRWAYS logo 与导航栏，主图为 'Escape for less' 横幅，Book a flight 预订组件中 Return/One way/Multi-city 单选项保持 Return（默认），From 框已聚焦并含 'Singap'，To 框为空，中间为交换图标，Departure 12 Sep 2025、Return 19 Sep 2025、Passengers/Class 1 Passenger Economy，最下方为 Book using Avios 复选框、Add promo code 链接和紫色 Search flights 按钮。",
+        "think": "上一步已经点击 From 输入框使其获得焦点，本步用户开始在其中键入出发地 'SINGAPORE'。从全屏图可以看到 'Singap' 已经出现在输入框中，并且由于键入触发，自动补全下拉列表已经展开，目前显示的是以 'Sa' 开头的城市（如 Sacramento、Samarinda、Sao Paulo 等）。随着继续键入完整的 'SINGAPORE'，自动补全列表会进一步过滤，最终会把 'Singapore, Singapore Changi Airport（SIN）' 等真正匹配的目的地推到列表顶部，等待用户点击选择来完成出发地设置。",
+        "action": "在 Book a flight 预订组件的 From（出发地）输入框中键入 SINGAPORE 作为出发城市。",
+        "expectation": "From 输入框中出现完整文本 'SINGAPORE'，自动补全下拉列表内容被进一步过滤和刷新，顶部出现与 Singapore 直接相关的候选项（典型为 'Singapore, Singapore Changi Airport'，机场代码 SIN，飞机图标），光标停留在输入框内，等待用户从下拉列表中点击选择 Singapore/SIN 完成出发地的填入。",
+        "operation": {
+          "type": "input",
+          "prompt": "在 Book a flight 预订组件的 From（出发地）输入框中输入 {{value}}",
+          "locatePrompt": "Book a flight 预订组件的 From（出发地）输入框",
+          "value": "SINGAPORE"
+        }
+      }
+    },
+    {
+      "step_idx": 9,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个半透明红色 X 落在自动补全下拉列表中的一项建议上，文字内容为 'Singapore, Singapore'（粗体紫红色城市/国家名）和 'Singapore Changi Airport'（灰色机场全称），右侧有机场代码 'SIN'，该项左侧带紫色飞机小图标，X 中心正好位于该条目的中下部；局部图上方还可见 From 输入框（紫色高亮边框，内含已键入完成的 'Singapore'）和 To 输入框（空）的边缘。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），页面顶部为 QATAR AIRWAYS logo 与导航栏，Book a flight 预订组件中 Return/One way/Multi-city 单选保持 Return，From 输入框已聚焦并显示完整文本 'Singapore'，自动补全下拉列表弹出一条以紫红粗体高亮的 'Singapore, Singapore' —— 'Singapore Changi Airport' —— 'SIN' 候选项，To 输入框仍为空，Departure 12 Sep 2025、Return 19 Sep 2025、Passengers/Class 1 Passenger Economy 保持不变，下方为 + Add promo code 链接和紫色 Search flights 按钮；页面其余区域为 'Start planning your next trip' 推广卡片。",
+        "think": "上一步已经在 From 输入框中键入 'SINGAPORE'，自动补全列表过滤后把 'Singapore, Singapore Changi Airport（SIN）' 推到顶部。局部图中红色 X 准确落在这一条 SIN 候选项上，意图非常明确：用户要确认从 Singapore Changi Airport（SIN）出发。点击该候选项会让控件把 From 的值从原始输入文本 'Singapore' 替换/锁定为标准化的 'Singapore, Singapore (SIN)'，自动补全下拉列表随之关闭，光标从 From 框移开，预订组件的出发地字段正式填好，等待用户接着填写目的地或直接点击 Search flights。",
+        "action": "点击 From 输入框下方自动补全列表中的 'Singapore, Singapore — Singapore Changi Airport (SIN)' 候选项，以确认出发地为 Singapore Changi Airport。",
+        "expectation": "自动补全下拉列表立即关闭，From 输入框的内容更新为标准化的 'Singapore, Singapore'（带机场代码 SIN 的标记），输入框边框回到默认状态，焦点从 From 框释放；To 输入框保持为空，预订组件整体可继续进行下一步（如输入目的地或点击紫色的 Search flights 按钮）。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 From 输入框自动补全下拉列表中的 'Singapore, Singapore — Singapore Changi Airport (SIN)' 候选项以确认出发地为 Singapore Changi Airport"
+        }
+      }
+    },
+    {
+      "step_idx": 10,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示 Book a flight 预订组件中，From 输入框已填好 'Singapore SIN'（标准化文本），To 输入框处于聚焦状态（紫色高亮边框），框内已键入文本 'Lo'（大写 L + 小写 o），光标位于文本末尾；To 框下方弹出自动补全下拉列表，列出以 'Lo' 开头的城市/机场建议：第一条 London, United Kingdom（London，城市码 LON，带定位图标），第二条 London, United Kingdom — London Gatwick Airport（LGW，飞机图标），第三条 London, United Kingdom — London Heathrow Airport（LHR，飞机图标），第四条 London, United Kingdom — London City Airport（LCY，飞机图标），第五条 London, United Kingdom — London Euston Railway Station（QQU，火车站图标），第六条 London, United Kingdom — London Luton Airport（LTN，飞机图标），列表右侧有滚动条指示还有更多项。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），页面顶部为 QATAR AIRWAYS logo 与导航栏，主图为 'Escape for less' 横幅，Book a flight 预订组件中 Return/One way/Multi-city 单选项保持 Return，From 框为 'Singapore SIN'，To 框已聚焦并含 'Lo'，Departure 12 Sep 2025、Return 19 Sep 2025、Passengers/Class 1 Passenger Economy 保持不变，下方为 Book using Avios 复选框、Add promo code 链接和紫色 Search flights 按钮，页面其余区域为 'Start planning your next trip' 推广卡片。",
+        "think": "上一步已经在 From 输入框中完成 'SINGAPORE' 键入并点击确认 Singapore Changi Airport（SIN）候选项，出发地字段已锁定为 'Singapore SIN'，焦点随之释放。Step 9 之后 To 输入框已通过点击或 Tab 切换获得了焦点，并开始键入 'Lo'，自动补全下拉列表已根据 'Lo' 过滤，把所有以 London 开头的候选（LON/LGW/LHR/LCY/QQU/LTN）推到列表顶部。本步的 action 是继续在 To 输入框中追加输入 'LOS'，意图是把目的地从模糊的 'Lo'（被 London 系列独占）进一步精确到 Los（典型为 Los Angeles, United States of America 的 Los Angeles International Airport，机场代码 LAX，IATA 城市码 LAX/QQU 等；也可能是其他 'Los' 开头的城市），从而让自动补全列表重新过滤、把 Lagos / Los Angeles / 等匹配项推到顶部，供下一步点击确认。输入的是追加在已有 'Lo' 之后的三字母前缀，不是替换。",
+        "action": "在 Book a flight 预订组件的 To（目的地）输入框中继续追加键入 LOS（与之前的 'Lo' 合并为 'LoLOS' 实际是 'LoLOS' 的形式，按页面处理为 'Lo' + 'LOS' 累积），进一步缩小候选范围到 Los/Lagos 等匹配项。",
+        "expectation": "To 输入框中的文本更新为 'LoLOS'（实际页面按合并处理显示为 'LoLOS' 或过滤逻辑下等价的 'LoLOS'），自动补全下拉列表被进一步过滤刷新，顶部出现与 'Los' / 'Lagos' 等直接相关的候选项（典型为 Los Angeles, United States of America — Los Angeles International Airport，机场代码 LAX，飞机图标；或 Lagos, Nigeria — Murtala Muhammed International Airport，LOS 等），光标停留在 To 输入框内，等待用户从下拉列表中点击选择目的地完成 To 字段的填入。",
+        "operation": {
+          "type": "input",
+          "prompt": "在 Book a flight 预订组件的 To（目的地）输入框中继续输入 {{value}}，以进一步过滤到 Los/Lagos 等匹配项",
+          "locatePrompt": "Book a flight 预订组件的 To（目的地）输入框",
+          "value": "LOS"
+        }
+      }
+    },
+    {
+      "step_idx": 11,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示 Book a flight 预订组件的 To 输入框中已键入 'Los'（带竖线光标），下方自动补全下拉列表中第一条建议是 'Los Angeles, United States of America'（粗体）/ 'Los Angeles / Tom Bradle[y International Airport]'（灰色），右侧机场代码 LAX，左侧带紫色飞机图标；半透明红色 X 中心正好落在该 Los Angeles LAX 候选项的中部位置，X 的右臂还压到列表第二、三条 San Carlos Bariloche (BRC) 和 San Martin De Los An (CPC) 的文字之上。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Book a flight 预订组件中 Return 单选保持默认，From 已填 'Singapore SIN'，To 输入框已聚焦并显示 'Los'，自动补全下拉列表弹出，第一条 Los Angeles (LAX) 顶部加亮，Departure 12 Sep 2025、Return 19 Sep 2025、Passengers/Class 1 Passenger Economy 保持不变，下方为 Book using Avios 复选框、Add promo code 链接和紫色 Search flights 按钮；页面其余区域为 'Start planning your next trip' 推广卡片（Explore our offers、17 weekly flights to Dublin from 2 December 2025、Dine and earn Avios、Elevate your experience），右下角任务栏有 Chrome 录音中指示。",
+        "think": "上一步已经在 To 输入框中累计键入 'Lo' + 'LOS' = 'Los'，自动补全下拉列表被过滤刷新，把 Los Angeles, United States of America — Los Angeles / Tom Bradley International Airport（LAX）推到最顶部并加亮，San Carlos Bariloche (BRC)、San Martin De Los An (CPC) 等以 'Los' 关键字匹配的城市排在第二、第三位。局部图红色 X 精确落在 LAX 候选项上，结合 step 9 中确认 Singapore Changi Airport (SIN) 的相同模式，意图非常明确：用户要确认目的地为 Los Angeles / Tom Bradley International Airport (LAX)。点击该条会把 To 字段从原始输入 'Los' 替换/锁定为标准化的 'Los Angeles, United States of America (LAX)'，自动补全下拉列表关闭，焦点从 To 框移开，整张 Book a flight 表单（From Singapore SIN → To Los Angeles LAX，Departure 12 Sep 2025、Return 19 Sep 2025、1 Passenger Economy）即可点击 Search flights 出票。",
+        "action": "点击 To 输入框下方自动补全下拉列表中的 'Los Angeles, United States of America — Los Angeles / Tom Bradley International Airport (LAX)' 候选项，以确认目的地为 Los Angeles (LAX)。",
+        "expectation": "自动补全下拉列表立即关闭，To 输入框的内容更新为标准化的 'Los Angeles'（带机场代码 LAX 的标记），输入框紫色高亮边框回到默认状态，焦点从 To 框释放；Book a flight 预订组件整体保持 From 'Singapore SIN'、To 'Los Angeles LAX'、Departure 12 Sep 2025、Return 19 Sep 2025、1 Passenger Economy 的状态，下方的紫色 Search flights 按钮变为可点击的主操作，等待用户执行下一步（通常是点击 Search flights 查询航班）。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 To 输入框自动补全下拉列表中的 'Los Angeles, United States of America — Los Angeles / Tom Bradley International Airport (LAX)' 候选项以确认目的地为 Los Angeles (LAX)"
+        }
+      }
+    },
+    {
+      "step_idx": 12,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示 Book a flight 预订组件顶部一行，包含紫色飞机图标的 Book a flight 标题，下方一行有三个单选项：Return（已选中，紫红色实心圆点）、One way（未选中，空心圆圈，旁边带半透明红色 X，X 中心正好落在 One way 文字上）、Multi-city（未选中，空心圆圈）；再往下可见 From 输入框已填 'Singapore SIN'，To 输入框已填 'Los Angeles LAX'，以及交换起降城市的双向箭头按钮的边缘。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Book a flight 预订组件中 Return 单选保持默认选中，From 'Singapore SIN'、To 'Los Angeles LAX' 都已经填好，Departure 12 Sep 2025、Return 19 Sep 2025、Passengers/Class 1 Passenger Economy 字段保持不变；预订组件下方弹出一个白色日历浮层，左右并排显示 September 2025 和 October 2025 两个月份日历，September 12（星期五）和 September 19（星期五）分别被紫红色高亮并在下方标注 2,230 价格，10 月 2、3、4、5、6、7、8、9、10、11、12 等日期下方有 2,198/2,230 等票价，日历底部有 My dates are flexible 复选框、From SGD 2230.5 per adult 价签、Clear all 文本按钮和紫色 Continue 按钮。",
+        "think": "上一步已经把出发地 Singapore Changi Airport (SIN) 和目的地 Los Angeles (LAX) 全部确认完毕，预订组件的 From、To 字段已标准化填好，Departure 12 Sep 2025、Return 19 Sep 2025、1 Passenger Economy 也都保持原值；并且因为焦点最后停留在 Return 日期输入框，预订组件自动弹出了双月日历浮层，Sep 12 与 Sep 19 分别作为出发和回程高亮。当前局部图红色 X 精确落在 One way 单选项上，意图非常明确：用户希望把行程类型从 Return 切换为 One way（单程），即只保留出发日期、不再选回程。这与原始的 step 10/11 流程（往返票）形成了一个调整——很可能因为已经发现往返票价偏高或者用户只需要单程票。点击 One way 之后，预估反应是：One way 单选圆点变为紫红色实心，Return 单选圆点变回空心且颜色变浅；Return 日期输入框要么被隐藏/禁用，要么其值被清空，Passengers/Class 字段保持不变；日历浮层中 19 Sep 2025 的高亮会消失，12 Sep 2025 保持出发高亮；底部的 From 价格从 SGD 2230.5 per adult（往返）更新为单程票价；用户随后可以点击 Continue 跳到航班选择页。",
+        "action": "点击 Book a flight 预订组件顶部的 One way 单选按钮，将行程类型从 Return 切换为单程（One way）。",
+        "expectation": "One way 单选圆点变为紫红色实心，Return 单选圆点变回空心；Return 日期输入框在视觉上被移除、隐藏或被禁用清空（仅保留 Departure 12 Sep 2025 一个日期字段）；弹出的双月日历浮层中 19 Sep 2025 的高亮消失，仅 12 Sep 2025 保持紫红色高亮；日历底部 From 票价从往返的 SGD 2230.5 per adult 更新为单程的较低价格；Passengers/Class 字段保持 1 Passenger Economy 不变，等待用户点击 Continue 进入下一阶段。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Book a flight 预订组件顶部的 One way 单选按钮，将行程类型从 Return 切换为单程（One way）"
+        }
+      }
+    },
+    {
+      "step_idx": 13,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示 Book a flight 预订组件的 Departure（出发日期）字段，字段上方有灰色小字标签 Departure，下方为大号黑色文字 '12 Sep 2025'，半透明红色 X 的中心正好压在该日期文字的 'Sep' 部分上。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Book a flight 预订组件中 One way 单选已被选中（紫红色实心圆点），Return 变回空心圆圈，Return 日期字段在 UI 中已被隐藏/移除，只剩 Departure 12 Sep 2025 一个日期字段；From 'Singapore SIN'、To 'Los Angeles LAX'、Passengers/Class '1 Passenger Economy' 保持不变；下方的日历浮层已收起（One way 模式下不再需要选回程），仅显示 Book using Avios 复选框、Add promo code 链接和紫色 Search flights 按钮；页面其余区域为 'Start planning your next trip' 推广卡片。",
+        "think": "上一步已经把行程类型从 Return 切换为 One way，回程日期字段随之消失，只剩 Departure 12 Sep 2025，焦点也回到了 Departure 输入框。当前局部图红色 X 精确落在 Departure '12 Sep 2025' 字段的中部，结合 One way 模式下的单日期选择逻辑，意图非常明确：用户要点击出发日期输入框以调出日历/日期选择器，对 12 Sep 2025 这个默认出发日期做一次确认或调整。点击之后，预订组件会再次弹出与该字段关联的日历浮层（因为 One way 模式，日历只会高亮一个日期，并提供前后月份的日期网格供选择），用户可在弹出的日历中直接点击目标日期完成 Departure 字段的更新或保持原值。",
+        "action": "点击 Book a flight 预订组件中的 Departure '12 Sep 2025' 日期输入框，打开日期选择日历浮层以确认或调整出发日期。",
+        "expectation": "Departure 输入框获得焦点（紫色高亮边框），预订组件在其下方或相邻位置弹出日期选择日历浮层（One way 模式下只会高亮单一日期，不再显示双月回程高亮），浮层中 12 Sep 2025 保持当前选中状态并以紫红色高亮标记，前/后月份的日期网格清晰可见；用户可点击日历中的任意日期来更新 Departure 字段，或直接关闭日历保留 12 Sep 2025 不变，随后即可点击紫色 Search flights 按钮进入下一阶段。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Book a flight 预订组件中的 Departure '12 Sep 2025' 日期输入框，打开日期选择日历浮层以确认或调整出发日期"
+        }
+      }
+    },
+    {
+      "step_idx": 14,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示卡塔尔航空 Book a flight 预订组件弹出的单月日历视图（September 2025），可以看到 8、9、10、11、12（带 1,556 价格）等日期，其中 12 号已带有深紫红色高亮背景表示已选为出发日；紧接其下一行的 15 号也被紫红色方框包裹并标注票价 1,453，红色 X 的中心正好压在该 15 号日期格上，X 的右臂还跨到相邻的 16、17、18 等日期上。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Book a flight 预订组件中 One way 单选已被选中（紫红色实心圆点），Return/Multi-city 为空心圆圈，From 'Singapore SIN'、To 'Los Angeles LAX'、Passengers/Class '1 Passenger Economy' 保持不变；Departure 字段聚焦在 '12 Sep 2025'（紫色高亮边框），其下方弹出左右并排的 September 2025 / October 2025 双月日历浮层，12 号和 15 号分别被紫红色方框包裹并显示 1,556 / 1,453 票价，其他日期下方带有 1,197、1,265、1,261、1,297、1,322、1,289 等票价；日历底部有 'My dates are flexible' 复选框、'From SGD 1556.9 per adult' 价签、Clear all 文本按钮和紫色 Continue 按钮；页面其余区域为 'Start planning your next trip' 推广卡片。",
+        "think": "上一步刚刚点击了 Departure '12 Sep 2025' 输入框并成功弹出 One way 模式下的双月日历浮层，当前 Departure 12 Sep 2025 仍为紫色高亮选中的状态，预订组件处于等待用户重新选择出发日的就绪状态。局部图中红色 X 精确落在 September 15（星期一）这个紫红色方框包裹的日期格上，意图非常明确：用户希望把出发日期从 12 Sep 2025 调整为 15 Sep 2025，对应票价从 1,556 变为 1,453（更便宜的一天）。点击之后，预估反应是：15 Sep 2025 维持紫红色高亮选中状态，12 Sep 2025 失去选中高亮（恢复为普通日期样式）；Departure 输入框的内容更新为 '15 Sep 2025'；日历底部 'From SGD 1556.9 per adult' 价签刷新为更低的 'From SGD 1453 per adult'；日历浮层通常会保持打开或自动收起，用户随后可点击 Continue 按钮进入航班列表页。",
+        "action": "点击 Book a flight 预订组件弹出的 September 2025 日历中的 15 号日期格，将出发日期从 12 Sep 2025 调整为 15 Sep 2025。",
+        "expectation": "September 15, 2025 维持紫红色方框高亮选中状态，September 12, 2025 失去选中高亮恢复为普通日期样式；Departure 输入框的内容从 '12 Sep 2025' 更新为 '15 Sep 2025'；日历底部 'From SGD 1556.9 per adult' 价签自动刷新为更低的 'From SGD 1453 per adult'；日历浮层可能会自动收起或保持打开以便用户进一步操作；用户随后可点击紫色 Continue 按钮继续进入航班选择页，或继续在日历中选择其他日期。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Book a flight 预订组件弹出的 September 2025 日历中的 15 号日期格，将出发日期从 12 Sep 2025 调整为 15 Sep 2025"
+        }
+      }
+    },
+    {
+      "step_idx": 15,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示一个紫红色（酒红色）的圆角矩形按钮，按钮上居中显示白色文字 'Continue'，半透明红色 X 的中心精确压在该按钮中央的 'Continue' 文字上。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Book a flight 预订组件中 One way 单选已选中（紫红色实心圆点），From 'Singapore SIN'、To 'Los Angeles LAX'、Departure '15 Sep 2025'（紫色高亮边框）、Passengers/Class '1 Passenger Economy' 保持不变；预订组件下方弹出的双月日历浮层（September 2025 / October 2025）中，September 15 被深紫红色实心方块高亮标记为已选出发日，9 月 1-14 号和其他日期以普通黑/灰字显示，October 2025 同样展示 1-31 号日期网格；日历底部依次为 'My dates are flexible' 复选框、'From SGD 1453.9 per adult' 价签、空心 'Clear all' 文字按钮和紫红色实心 'Continue' 按钮；页面其余区域为 'Start planning your next trip' 推广卡片和 Explore our offers 等内容。",
+        "think": "上一步已经成功将出发日期从 12 Sep 2025 调整为 15 Sep 2025，September 15 在日历中被深紫红色高亮选中，Departure 输入框已更新为 '15 Sep 2025'，日历底部价签也刷新为更低的 'From SGD 1453.9 per adult'。当前局部图红色 X 精确落在日历浮层右下角紫红色 'Continue' 按钮上，意图非常明确：用户确认出发日期为 15 Sep 2025、行程为 One way 单程、1 位 Economy 旅客、Singapore SIN → Los Angeles LAX 这些参数都已经设置完毕，希望点击 Continue 进入下一步的航班选择结果页。点击之后，预订组件会提交当前查询参数并跳转到航班列表/选择页面，URL 通常会从 homepage 变为包含出发/到达机场代码、出发日期、乘客数和舱位的搜索结果页（例如带有 SIN、LAX、2025-09-15 等查询参数的航班列表 URL），日历浮层会随之关闭。",
+        "action": "点击 Book a flight 预订组件日历浮层底部的紫色 Continue 按钮，确认出发日期 15 Sep 2025、One way 单程、Singapore SIN → Los Angeles LAX、1 Passenger Economy 并继续到航班搜索结果页。",
+        "expectation": "日历浮层和预订组件会提交查询并跳转到卡塔尔航空的航班选择结果页面，URL 会更新为包含 SIN、LAX、2025-09-15、1 成人 Economy 等参数的搜索结果链接；新页面会展示 2025 年 9 月 15 日从 Singapore Changi (SIN) 到 Los Angeles (LAX) 的单程航班列表，包括不同时间、票价和舱位的航班选项；预订组件的日历浮层随之关闭。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Book a flight 预订组件日历浮层底部的紫色 Continue 按钮，确认出发日期 15 Sep 2025、One way 单程、Singapore SIN → Los Angeles LAX、1 Passenger Economy 并继续到航班搜索结果页"
+        }
+      }
+    },
+    {
+      "step_idx": 16,
+      "caption": {
+        "observation": "Cropped image shows 局部图显示 Book a flight 预订组件底部的紫红色（酒红色）圆角矩形按钮，按钮上居中显示白色文字 'Search flights'，半透明红色 X 的中心正好压在该按钮的 'Search' 文字上。全屏图显示 Chrome 浏览器当前打开卡塔尔航空官网（qatarairways.com/en-sg/homepage.html），Book a flight 预订组件中 One way 单选已被选中（紫红色实心圆点），From 'Singapore SIN'、To 'Los Angeles LAX'、Departure '15 Sep 2025'、Passengers/Class '1 Passenger Economy' 保持不变；预订组件下方依次为 'Book using Avios' 复选框、'+ Add promo code' 链接和紫红色实心 'Search flights' 按钮；页面其余区域为 'Start planning your next trip' 推广卡片和 Explore our offers、Dine and earn Avios with our partners、Elevate your experience 等推广板块。",
+        "think": "上一步已经在日历浮层底部点击了 Continue 按钮确认出发日期 15 Sep 2025，日历浮层已经收起，预订组件恢复到完整显示状态，所有查询参数（One way 单程、Singapore SIN → Los Angeles LAX、15 Sep 2025 出发、1 Passenger Economy）都已就绪。当前局部图红色 X 精确落在预订组件最右侧的紫红色 'Search flights' 主操作按钮上，意图非常明确：用户希望提交当前 Book a flight 预订组件中的所有查询参数，进入卡塔尔航空的航班搜索结果页面以查看 2025 年 9 月 15 日从 Singapore Changi (SIN) 到 Los Angeles (LAX) 的单程航班列表。点击后，浏览器会向卡塔尔航空的航班搜索接口提交查询参数，URL 会从 homepage 跳转到包含 SIN、LAX、2025-09-15、1 成人 Economy 等参数的搜索结果链接，并展示对应日期和航线的航班选项列表。",
+        "action": "点击 Book a flight 预订组件底部的紫红色 Search flights 主操作按钮，提交当前查询参数（One way 单程、Singapore SIN → Los Angeles LAX、15 Sep 2025 出发、1 Passenger Economy）并进入航班搜索结果页。",
+        "expectation": "浏览器向卡塔尔航空航班搜索接口提交查询，URL 从 homepage 更新为包含 SIN、LAX、2025-09-15、1 成人 Economy 等参数的搜索结果链接；新页面会展示 2025 年 9 月 15 日从 Singapore Changi (SIN) 到 Los Angeles (LAX) 的单程航班列表，包括不同起飞时间、票价、舱位和经停选项的航班卡片；预订组件的日历浮层会保持关闭。",
+        "operation": {
+          "type": "click",
+          "prompt": "点击 Book a flight 预订组件底部的紫红色 Search flights 主操作按钮，提交当前查询参数（One way 单程、Singapore SIN → Los Angeles LAX、15 Sep 2025 出发、1 Passenger Economy）并进入航班搜索结果页"
+        }
+      }
+    }
+  ]
+}

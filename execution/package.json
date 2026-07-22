@@ -1,0 +1,53 @@
+{
+  "name": "cua-midscene",
+  "version": "1.0.0",
+  "description": "基于 TypeScript 与 Midscene computer use 的 CUA 任务执行器。",
+  "type": "module",
+  "bin": {
+    "cua": "./dist/cua/cli/main.js"
+  },
+  "exports": {
+    ".": "./dist/cua/index.js"
+  },
+  "files": [
+    ".env.example",
+    "agents",
+    "cua",
+    "dist",
+    "executors",
+    "projects",
+    "references",
+    "schemas",
+    "README.md",
+    "SKILL.md",
+    "tsconfig.build.json",
+    "tsconfig.json"
+  ],
+  "engines": {
+    "node": ">=18.19.0"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "cua": "tsx cua/cli/main.ts",
+    "check": "tsx executors/check-env.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && tsx --test tests/all.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@midscene/computer": "^1.10.0",
+    "@midscene/core": "^1.10.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "dotenv": "^16.4.7",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.68",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

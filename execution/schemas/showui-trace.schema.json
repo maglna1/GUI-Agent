@@ -1,0 +1,41 @@
+{
+  "$comment": "只约束 trace 转换器消费的结构化字段，保留录制证据中的其他信息。",
+  "type": "object",
+  "required": ["trajectory"],
+  "properties": {
+    "trajectory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step_idx", "caption"],
+        "properties": {
+          "step_idx": { "type": "integer" },
+          "caption": {
+            "type": "object",
+            "required": ["operation"],
+            "properties": {
+              "operation": {
+                "type": "object",
+                "required": ["type"],
+                "properties": {
+                  "type": {
+                    "enum": ["click", "doubleClick", "input", "keyboard", "wait"]
+                  },
+                  "prompt": { "type": ["string", "null"] },
+                  "locatePrompt": { "type": ["string", "null"] },
+                  "value": { "type": ["string", "null"] },
+                  "key": { "type": ["string", "null"] },
+                  "condition": { "type": ["string", "null"] }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

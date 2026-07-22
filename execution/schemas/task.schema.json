@@ -1,0 +1,140 @@
+{
+  "$comment": "CUA 持久化契约；由 TypeScript 核心通过 Ajv 在文件边界校验。",
+  "$defs": {
+    "TaskInputDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "title": "Default",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "type": {
+          "const": "string",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "label",
+        "default"
+      ],
+      "title": "TaskInputDefinition",
+      "type": "object"
+    },
+    "TaskSource": {
+      "additionalProperties": false,
+      "properties": {
+        "conversionCommand": {
+          "title": "Conversioncommand",
+          "type": "string"
+        },
+        "processedLogPath": {
+          "title": "Processedlogpath",
+          "type": "string"
+        },
+        "recordingPreparationCommand": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recordingpreparationcommand"
+        },
+        "traceGenerationCommand": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tracegenerationcommand"
+        },
+        "tracePath": {
+          "title": "Tracepath",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tracePath",
+        "processedLogPath",
+        "conversionCommand"
+      ],
+      "title": "TaskSource",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "goal": {
+      "title": "Goal",
+      "type": "string"
+    },
+    "inputs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/TaskInputDefinition"
+      },
+      "title": "Inputs",
+      "type": "object"
+    },
+    "scene": {
+      "title": "Scene",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "0.2",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/TaskSource"
+    },
+    "task": {
+      "title": "Task",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scene",
+    "task",
+    "title",
+    "description",
+    "goal",
+    "source",
+    "inputs"
+  ],
+  "title": "TaskManifest",
+  "type": "object"
+}

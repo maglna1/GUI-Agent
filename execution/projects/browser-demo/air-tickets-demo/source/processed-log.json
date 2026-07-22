@@ -1,0 +1,192 @@
+[
+  {
+    "timestamp": 0.0,
+    "action": "CONFIG",
+    "coords": {
+      "0": {
+        "x0": 0,
+        "y0": 0,
+        "width": 2560,
+        "height": 1440,
+        "scale_factor": 1.0
+      }
+    },
+    "current_software": "System Info"
+  },
+  {
+    "timestamp": 0.429,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 955,
+        "y": 101
+      }
+    ],
+    "current_software": "electron.exe - electron-screen-recorder"
+  },
+  {
+    "timestamp": 4.53,
+    "action": "Type: QATAR AIRWAYS",
+    "coords": [
+      {
+        "x": 955,
+        "y": 101
+      }
+    ],
+    "current_software": "chrome.exe - New Tab - Google Chrome"
+  },
+  {
+    "timestamp": 4.924,
+    "action": "Press ENTER",
+    "coords": [
+      {
+        "x": 955,
+        "y": 101
+      }
+    ],
+    "current_software": "chrome.exe - New Tab - Google Chrome"
+  },
+  {
+    "timestamp": 6.953,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 668,
+        "y": 592
+      }
+    ],
+    "current_software": "chrome.exe - qatar airways - Google Search - Google Chrome"
+  },
+  {
+    "timestamp": 9.312,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 463,
+        "y": 1092
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 10.954,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 2177,
+        "y": 1344
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 11.924,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 520,
+        "y": 1078
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 14.784,
+    "action": "Type: SINGAPORE",
+    "coords": [
+      {
+        "x": 685,
+        "y": 488
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 16.63,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 685,
+        "y": 488
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 23.055,
+    "action": "Type: LOS ",
+    "coords": [
+      {
+        "x": 1023,
+        "y": 477
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 24.918,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 1023,
+        "y": 477
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 26.961,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 579,
+        "y": 286
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 27.961,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 1345,
+        "y": 389
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 30.514,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 920,
+        "y": 828
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 31.826,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 2030,
+        "y": 1182
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  },
+  {
+    "timestamp": 33.5,
+    "action": "LClick at",
+    "coords": [
+      {
+        "x": 1991,
+        "y": 491
+      }
+    ],
+    "current_software": "chrome.exe - Book Flights - Book & Fly from Singapore | Qatar Airways - Google Chrome"
+  }
+]

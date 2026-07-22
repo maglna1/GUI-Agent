@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "0.1",
+  "scene": "browser-demo",
+  "title": "浏览器操作示例",
+  "description": "用于验证录制 trace 到 Midscene computer use 任务的浏览器场景"
+}

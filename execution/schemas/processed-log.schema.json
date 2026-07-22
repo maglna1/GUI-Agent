@@ -1,0 +1,12 @@
+{
+  "$comment": "只约束任务等待时间计算所需的 timestamp。",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["timestamp"],
+    "properties": {
+      "timestamp": { "type": "number" }
+    },
+    "additionalProperties": true
+  }
+}

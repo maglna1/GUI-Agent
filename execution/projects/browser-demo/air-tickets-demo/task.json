@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "0.2",
+  "scene": "browser-demo",
+  "task": "air-tickets-demo",
+  "title": "air-tickets-demo",
+  "description": "将 Qatar Airways 订票页面设置为 Singapore 到 Los Angeles 的单程航班搜索",
+  "goal": "将 Qatar Airways 订票页面设置为 Singapore 到 Los Angeles 的单程航班搜索",
+  "source": {
+    "tracePath": "source/showui-trace.json",
+    "processedLogPath": "source/processed-log-sc.json",
+    "conversionCommand": "node dist/cua/cli/main.js task init-from-trace --scene browser-demo --task air-tickets-demo --goal \"将 Qatar Airways 订票页面设置为 Singapore 到 Los Angeles 的单程航班搜索\" --recording-preparation-command \"将 record 生成的 trace、processed log 和截图复制到用户数据根的 browser-demo/air-tickets-demo/source\" --trace-generation-command \"未记录；当前录制样例未保留 trace 生成命令\"",
+    "recordingPreparationCommand": "将 record 生成的 trace、processed log 和截图复制到用户数据根的 browser-demo/air-tickets-demo/source",
+    "traceGenerationCommand": "未记录；当前录制样例未保留 trace 生成命令"
+  },
+  "inputs": {
+    "step-002-input": {
+      "type": "string",
+      "label": "Chrome 地址栏/搜索栏",
+      "description": "在 Chrome 地址栏/搜索栏中输入 {{value}}",
+      "default": "QATAR AIRWAYS"
+    },
+    "step-008-input": {
+      "type": "string",
+      "label": "Book a flight 预订组件的 From（出发地）输入框",
+      "description": "在 Book a flight 预订组件的 From（出发地）输入框中输入 {{value}}",
+      "default": "SINGAPORE"
+    },
+    "step-010-input": {
+      "type": "string",
+      "label": "Book a flight 预订组件的 To（目的地）输入框",
+      "description": "在 Book a flight 预订组件的 To（目的地）输入框中继续输入 {{value}}，以进一步过滤到 Los/Lagos 等匹配项",
+      "default": "LOS"
+    }
+  }
+}

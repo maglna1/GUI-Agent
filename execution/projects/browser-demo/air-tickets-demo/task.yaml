@@ -1,0 +1,82 @@
+computer: {}
+agent:
+  groupName: air-tickets-demo
+  groupDescription: 将 Qatar Airways 订票页面设置为 Singapore 到 Los Angeles 的单程航班搜索
+  generateReport: true
+tasks:
+- name: step-001 | click
+  flow:
+  - aiTap: 点击 Chrome 浏览器顶部的地址栏/搜索栏区域以聚焦输入框
+- name: step-002 | input
+  flow:
+  - sleep: 4101
+  - KeyboardTypeText:
+      locate: Chrome 地址栏/搜索栏
+      value: '{{step-002-input}}'
+      mode: replace
+- name: step-003 | keyboard
+  flow:
+  - sleep: 394
+  - KeyboardPress:
+      keyName: Enter
+- name: step-004 | click
+  flow:
+  - sleep: 2029
+  - aiTap: 点击 Google 搜索结果中第一条 Sponsored 广告链接'Qatar Airways Official Website'（来自 qatarairways.com）以打开卡塔尔航空官网
+- name: step-005 | click
+  flow:
+  - sleep: 2359
+  - aiTap: 点击 Book a flight 预订组件中的 From（出发地）输入框以使其获得焦点，准备输入出发城市或机场
+- name: step-006 | click
+  flow:
+  - sleep: 1642
+  - aiTap: 点击卡塔尔航空官网底部 Cookie 同意横幅中的 Accept all 按钮以接受全部 Cookie 并关闭横幅
+- name: step-007 | click
+  flow:
+  - sleep: 970
+  - aiTap: 点击 Book a flight 预订组件中的 From（出发地）输入框以使其获得焦点，准备输入出发城市或机场
+- name: step-008 | input
+  flow:
+  - sleep: 2860
+  - KeyboardTypeText:
+      locate: Book a flight 预订组件的 From（出发地）输入框
+      value: '{{step-008-input}}'
+      mode: replace
+- name: step-009 | click
+  flow:
+  - sleep: 1846
+  - aiTap: 点击 From 输入框自动补全下拉列表中的 'Singapore, Singapore — Singapore Changi Airport (SIN)' 候选项以确认出发地为 Singapore Changi Airport
+- name: step-010 | input
+  flow:
+  - sleep: 6425
+  - KeyboardTypeText:
+      locate: Book a flight 预订组件的 To（目的地）输入框
+      value: '{{step-010-input}}'
+      mode: replace
+- name: step-011 | click
+  flow:
+  - sleep: 1863
+  - aiTap: 点击 To 输入框自动补全下拉列表中的 'Los Angeles, United States of America — Los Angeles / Tom Bradley International Airport (LAX)'
+      候选项以确认目的地为 Los Angeles (LAX)
+- name: step-012 | click
+  flow:
+  - sleep: 2043
+  - aiTap: 点击 Book a flight 预订组件顶部的 One way 单选按钮，将行程类型从 Return 切换为单程（One way）
+- name: step-013 | click
+  flow:
+  - sleep: 1000
+  - aiTap: 点击 Book a flight 预订组件中的 Departure '12 Sep 2025' 日期输入框，打开日期选择日历浮层以确认或调整出发日期
+- name: step-014 | click
+  flow:
+  - sleep: 2553
+  - aiTap: 点击 Book a flight 预订组件弹出的 September 2025 日历中的 15 号日期格，将出发日期从 12 Sep 2025 调整为 15 Sep 2025
+- name: step-015 | click
+  flow:
+  - sleep: 1312
+  - aiTap: 点击 Book a flight 预订组件日历浮层底部的紫色 Continue 按钮，确认出发日期 15 Sep 2025、One way 单程、Singapore SIN → Los Angeles LAX、1 Passenger
+      Economy 并继续到航班搜索结果页
+- name: step-016 | click
+  flow:
+  - sleep: 1674
+  - aiTap: 点击 Book a flight 预订组件底部的紫红色 Search flights 主操作按钮，提交当前查询参数（One way 单程、Singapore SIN → Los Angeles LAX、15 Sep 2025
+      出发、1 Passenger Economy）并进入航班搜索结果页

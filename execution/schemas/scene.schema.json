@@ -1,0 +1,31 @@
+{
+  "$comment": "CUA 持久化契约；由 TypeScript 核心通过 Ajv 在文件边界校验。",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "scene": {
+      "title": "Scene",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "0.1",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scene",
+    "title",
+    "description"
+  ],
+  "title": "SceneManifest",
+  "type": "object"
+}
