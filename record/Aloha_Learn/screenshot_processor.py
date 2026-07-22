@@ -60,6 +60,10 @@ class VideoScreenshotExtractor:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return cv2.imwrite(path, img, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
 
+    def _save_png(self, path, img):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return cv2.imwrite(path, img)
+
     def _safe_crop(self, frame, x, y, crop_size=256):
         if x is None or y is None:
             return frame
