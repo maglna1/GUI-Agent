@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -64,6 +65,103 @@ class SavePngHelperTest(unittest.TestCase):
 
             self.assertTrue(ok)
             self.assertTrue(os.path.exists(nested))
+
+
+class DefaultClickIconSaveTest(unittest.TestCase):
+    def _build_action(self, ts, x, y):
+        return {
+            "timestamp": ts,
+            "action": "LClick at",
+            "coords": [{"x": x, "y": y}],
+            "current_software": "Explorer",
+        }
+
+    def _synthetic_frame(self, w=1920, h=1080, color=(200, 150, 100)):
+        # Solid-color BGR frame. The exact color makes content assertions trivial.
+        return np.zeros((h, w, 3), dtype=np.uint8)
+        # Note: solid zero is fine; we only check shape and absence of red X.
+
+    def _run_one_action(self, ext, action, screenshots_path):
+        return ext.process_actions(
+            [action],
+            video_path="ignored",
+            screenshots_path=screenshots_path,
+            need_scaling=False,
+            scale_x=1.0,
+            scale_y=1.0,
+        )
+
+    def test_default_click_produces_icon_png_in_icons_subdir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshots_path = Path(tmp)
+            ext = VideoScreenshotExtractor()
+            action = self._build_action(10.954, 820, 450)
+            expected_ts = abs(action["timestamp"] - 0.1)  # mirrors line 132
+            expected_base = f"{expected_ts:.3f}s"
+
+            with patch.object(VideoScreenshotExtractor, "_get_frame_at",
+                              return_value=self._synthetic_frame()):
+                updated = self._run_one_action(ext, action, screenshots_path)
+
+            # 1. Icon PNG file exists in screenshots/icons/
+            icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
+            self.assertTrue(icon_path.exists(), f"missing icon at {icon_path}")
+
+            # 2. Icon is a valid 50x50 PNG (lossless, exact size)
+            icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
+            self.assertIsNotNone(icon)
+            self.assertEqual(icon.shape[0], 50)
+            self.assertEqual(icon.shape[1], 50)
+
+            # 3. Existing JPG siblings still produced
+            self.assertTrue((screenshots_path / f"{expected_base}.jpg").exists())
+            self.assertTrue((screenshots_path / f"{expected_base}.crop.jpg").exists())
+
+            # 4. JSON schema unchanged: only screenshot_full and screenshot_crop, no screenshot_icon
+            self.assertIn("screenshot_full", updated[0])
+            self.assertIn("screenshot_crop", updated[0])
+            self.assertNotIn("screenshot_icon", updated[0])
+
+    def test_drag_action_does_not_produce_icon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshots_path = Path(tmp)
+            ext = VideoScreenshotExtractor()
+            drag_action = {
+                "timestamp": 5.0,
+                "action": "DragStart at",
+                "coords": [{"x": 100, "y": 100}],
+                "path": [{"x": 100, "y": 100}, {"x": 200, "y": 200}],
+                "current_software": "Explorer",
+            }
+
+            with patch.object(VideoScreenshotExtractor, "_get_frame_at",
+                              return_value=self._synthetic_frame()):
+                self._run_one_action(ext, drag_action, screenshots_path)
+
+            icons_dir = screenshots_path / "icons"
+            produced = icons_dir.exists() and any(icons_dir.glob("*.png"))
+            self.assertFalse(produced, "DragStart must not produce an icon PNG")
+
+    def test_no_coordinate_action_does_not_produce_icon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshots_path = Path(tmp)
+            ext = VideoScreenshotExtractor()
+            scroll_action = {
+                "timestamp": 7.0,
+                "action": "Wheel at",
+                "coords": [{"x": 500, "y": 500}],
+                "current_software": "Explorer",
+            }
+
+            with patch.object(VideoScreenshotExtractor, "_get_frame_at",
+                              return_value=self._synthetic_frame()):
+                self._run_one_action(ext, scroll_action, screenshots_path)
+
+            icons_dir = screenshots_path / "icons"
+            self.assertFalse(
+                icons_dir.exists() and any(icons_dir.glob("record_memory_icon_*.png")),
+                "scroll/wheel actions must not produce icon PNGs",
+            )
 
 
 if __name__ == "__main__":

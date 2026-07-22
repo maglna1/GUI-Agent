@@ -196,6 +196,14 @@ class VideoScreenshotExtractor:
                 cx_raw, cy_raw = pt
                 crop_img = self._crop_with_black_padding(draw_frame, cx_raw, cy_raw, crop_size=self.crop_size)
 
+                # 1.5) Save small original click crop (no X marker) as PNG for icon memory
+                icon_crop = self._crop_with_black_padding(draw_frame, cx_raw, cy_raw, crop_size=self.icon_crop_size)
+                icon_fn = f"record_memory_icon_{base}_crop.png"
+                icon_path = screenshots_path / "icons" / icon_fn
+                icon_ok = self._save_png(str(icon_path), icon_crop)
+                if not icon_ok:
+                    raise RuntimeError(f"Could not save icon crop for action at {timestamp}s: {act_str}")
+
                 # 2) Draw semi-transparent X AFTER padding so it's fully visible
                 # X centered in the crop
                 cx = cy = self.crop_size // 2
