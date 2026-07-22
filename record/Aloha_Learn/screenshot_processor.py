@@ -8,13 +8,14 @@ import numpy as np
 class VideoScreenshotExtractor:
     """Extract full + crop screenshots per action and scale coordinates to a target resolution."""
 
-    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6):
+    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6, icon_crop_size=50):
         self.target_width = target_width
         self.target_height = target_height
         self.jpeg_quality = jpeg_quality
         self.crop_size = crop_size
         self.x_size = x_size
         self.x_thick = x_thick
+        self.icon_crop_size = icon_crop_size
 
     def scale_path(self, path, scale_x, scale_y):
         """Scale a list of {x,y} points for drag path."""
