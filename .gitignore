@@ -1,0 +1,30 @@
+**/.env
+**/.env.*
+!**/.env.example
+
+**/node_modules/
+**/dist/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.egg-info/
+
+**/midscene_run/
+**/reports/
+**/*.log
+
+.codex/
+
+record/Aloha_Learn/projects/
+
+# IDE
+.idea/
+
+# User task data and run snapshots (CUA_DATA_ROOT should live outside the repo)
+cua-data/
+
+# Upstream ShowUI-Aloha demo assets not referenced by README
+record/assets/
+
+# Recorder binary dropped next to project root
+record/*.exe
