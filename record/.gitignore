@@ -1,0 +1,6 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+Aloha_Learn/projects/
+Aloha_Act/trace_data/
