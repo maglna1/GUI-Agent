@@ -1,0 +1,243 @@
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import cv2
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from screenshot_processor import VideoScreenshotExtractor
+
+
+class IconCropSizeConstructorTest(unittest.TestCase):
+    def test_zero_arg_constructor_uses_default_icon_crop_size(self):
+        ext = VideoScreenshotExtractor()
+        self.assertEqual(ext.icon_crop_size, 50)
+
+    def test_explicit_icon_crop_size_kwarg_is_stored(self):
+        ext = VideoScreenshotExtractor(icon_crop_size=80)
+        self.assertEqual(ext.icon_crop_size, 80)
+
+    def test_existing_positional_args_still_work(self):
+        # All 6 pre-existing positional params passed; icon_crop_size must default.
+        ext = VideoScreenshotExtractor(1920, 1080, 95, 256, 30, 6)
+        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.target_width, 1920)
+        self.assertEqual(ext.crop_size, 256)
+
+    def test_existing_kwargs_still_work(self):
+        ext = VideoScreenshotExtractor(target_width=1280, crop_size=200)
+        self.assertEqual(ext.target_width, 1280)
+        self.assertEqual(ext.crop_size, 200)
+        self.assertEqual(ext.icon_crop_size, 50)
+
+
+class SavePngHelperTest(unittest.TestCase):
+    def setUp(self):
+        self.ext = VideoScreenshotExtractor()
+
+    def test_save_png_writes_file_and_returns_true(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "icons", "sample.png")
+            img = np.zeros((50, 50, 3), dtype=np.uint8)
+            img[10:20, 10:20] = (0, 0, 255)  # BGR red square for content sanity
+
+            ok = self.ext._save_png(path, img)
+
+            self.assertTrue(ok)
+            self.assertTrue(os.path.exists(path))
+            # Round-trip to confirm it's a real PNG (cv2.IMREAD_COLOR keeps BGR).
+            loaded = cv2.imread(path, cv2.IMREAD_COLOR)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.shape, (50, 50, 3))
+            # Pixel we wrote should still be red.
+            self.assertTrue(np.array_equal(loaded[15, 15], np.array([0, 0, 255])))
+
+    def test_save_png_creates_missing_parent_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            nested = os.path.join(tmp, "a", "b", "c", "icon.png")
+            img = np.zeros((50, 50, 3), dtype=np.uint8)
+
+            ok = self.ext._save_png(nested, img)
+
+            self.assertTrue(ok)
+            self.assertTrue(os.path.exists(nested))
+
+
+class DefaultClickIconSaveTest(unittest.TestCase):
+    def _build_action(self, ts, x, y):
+        return {
+            "timestamp": ts,
+            "action": "LClick at",
+            "coords": [{"x": x, "y": y}],
+            "current_software": "Explorer",
+        }
+
+    def _synthetic_frame(self, w=1920, h=1080):
+        # 非均匀图案化 BGR 帧：每个像素为 (x % 256, y % 256, (x + y) % 256)。
+        # 这样能产生唯一且可预测的像素值，使点击点周围 50x50 邻域可识别，
+        # 若源取错则会得到一张完全不同的图。
+        ys, xs = np.indices((h, w), dtype=np.uint16)
+        b = (xs % 256).astype(np.uint8)
+        g = (ys % 256).astype(np.uint8)
+        r = ((xs + ys) % 256).astype(np.uint8)
+        return np.stack([b, g, r], axis=-1)
+
+    def _run_one_action(self, ext, action, screenshots_path):
+        return ext.process_actions(
+            [action],
+            video_path="ignored",
+            screenshots_path=screenshots_path,
+            need_scaling=False,
+            scale_x=1.0,
+            scale_y=1.0,
+        )
+
+    def test_default_click_produces_icon_png_in_icons_subdir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshots_path = Path(tmp)
+            ext = VideoScreenshotExtractor()
+            action = self._build_action(10.954, 820, 450)
+            expected_ts = abs(action["timestamp"] - 0.1)  # 与 screenshot_processor.py 中的处理一致
+            expected_base = f"{expected_ts:.3f}s"
+
+            frame = self._synthetic_frame()
+            with patch.object(VideoScreenshotExtractor, "_get_frame_at",
+                              return_value=frame):
+                updated = self._run_one_action(ext, action, screenshots_path)
+
+            # 1. 图标 PNG 文件存在于 screenshots/icons/ 下
+            icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
+            self.assertTrue(icon_path.exists(), f"missing icon at {icon_path}")
+
+            # 2. 图标为合法的 50x50 PNG（无损、尺寸准确）
+            icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
+            self.assertIsNotNone(icon)
+            self.assertEqual(icon.shape[0], 50)
+            self.assertEqual(icon.shape[1], 50)
+
+            # 2.5. 像素级精确断言：直接对图案化帧调用 _crop_with_black_padding
+            # 得到期望图标。这样可以一次性验证：(a) 图标源自原始帧
+            # （而非带红 X 的 crop_img），(b) 源坐标正确，(c) PNG 往返无损。
+            expected_icon = ext._crop_with_black_padding(
+                frame, action["coords"][0]["x"], action["coords"][0]["y"],
+                crop_size=ext.icon_crop_size,
+            )
+            self.assertEqual(icon.shape, expected_icon.shape)
+            self.assertTrue(
+                np.array_equal(icon, expected_icon),
+                "icon PNG pixels must equal a direct _crop_with_black_padding of the frame",
+            )
+
+            # 3. 现有的 JPG 同名文件仍然产生
+            self.assertTrue((screenshots_path / f"{expected_base}.jpg").exists())
+            self.assertTrue((screenshots_path / f"{expected_base}.crop.jpg").exists())
+
+            # 4. JSON schema 未变：仅有 screenshot_full 和 screenshot_crop，不含 screenshot_icon
+            self.assertIn("screenshot_full", updated[0])
+            self.assertIn("screenshot_crop", updated[0])
+            self.assertNotIn("screenshot_icon", updated[0])
+
+    def test_edge_click_icon_has_black_padding_for_out_of_frame_region(self):
+        # 非常靠近左上角的点击：源区域部分落在 1920x1080 帧之外，
+        # 因此 _crop_with_black_padding 必须用纯 (0, 0, 0) 像素填补缺失区域，
+        # 而落在帧内的部分保留图案化像素。
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshots_path = Path(tmp)
+            ext = VideoScreenshotExtractor()
+            action = self._build_action(3.50, 2, 3)  # 紧贴角落的微小点击
+            expected_ts = abs(action["timestamp"] - 0.1)
+            expected_base = f"{expected_ts:.3f}s"
+
+            frame = self._synthetic_frame()
+            with patch.object(VideoScreenshotExtractor, "_get_frame_at",
+                              return_value=frame):
+                self._run_one_action(ext, action, screenshots_path)
+
+            icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
+            icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
+
+            # 形状必须严格为 50x50x3。
+            self.assertEqual(icon.shape, (50, 50, 3))
+
+            # 直接计算期望裁剪结果：因为 (2, 3) 紧贴角点，顶部和左侧应带有黑色 padding。
+            expected_icon = ext._crop_with_black_padding(
+                frame, 2, 3, crop_size=ext.icon_crop_size,
+            )
+            # 期望裁剪结果的顶部行和左侧列必须分别为纯黑。
+            # 使用与切片同形状的零数组才能正确通过 np.array_equal 形状比对。
+            self.assertTrue(
+                np.array_equal(expected_icon[0, :], np.zeros_like(expected_icon[0, :])),
+                "expected crop's top row must be pure black (out-of-frame padding)",
+            )
+            self.assertTrue(
+                np.array_equal(expected_icon[:, 0], np.zeros_like(expected_icon[:, 0])),
+                "expected crop's left column must be pure black (out-of-frame padding)",
+            )
+            # 加载出的 PNG 必须与计算得到的期望图标逐像素一致。
+            self.assertTrue(
+                np.array_equal(icon, expected_icon),
+                "edge-click icon PNG must match _crop_with_black_padding output exactly",
+            )
+
+            # 帧内区域（例如图标中心）应为非零图案化像素 —— 确认不全黑，
+            # 且采样的内部像素与图案化帧在该位置的取值一致。
+            center = icon[25, 25]
+            self.assertFalse(
+                np.array_equal(center, np.zeros(3, dtype=np.uint8)),
+                "center of icon should be non-zero (in-frame patterned source)",
+            )
+            # 点击 (2, 3) 且 icon_crop_size=50，half=25，因此图标中心对应帧像素 (2, 3)，
+            # 按构造规则为 (b=2, g=3, r=5)。
+            self.assertTrue(
+                np.array_equal(center, np.array([2, 3, 5], dtype=np.uint8)),
+                f"icon center must equal frame[3,2]=(2,3,5) BGR; got {center.tolist()}",
+            )
+
+    def test_drag_action_does_not_produce_icon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshots_path = Path(tmp)
+            ext = VideoScreenshotExtractor()
+            drag_action = {
+                "timestamp": 5.0,
+                "action": "DragStart at",
+                "coords": [{"x": 100, "y": 100}],
+                "path": [{"x": 100, "y": 100}, {"x": 200, "y": 200}],
+                "current_software": "Explorer",
+            }
+
+            with patch.object(VideoScreenshotExtractor, "_get_frame_at",
+                              return_value=self._synthetic_frame()):
+                self._run_one_action(ext, drag_action, screenshots_path)
+
+            icons_dir = screenshots_path / "icons"
+            produced = icons_dir.exists() and any(icons_dir.glob("*.png"))
+            self.assertFalse(produced, "DragStart must not produce an icon PNG")
+
+    def test_no_coordinate_action_does_not_produce_icon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            screenshots_path = Path(tmp)
+            ext = VideoScreenshotExtractor()
+            scroll_action = {
+                "timestamp": 7.0,
+                "action": "Wheel at",
+                "coords": [{"x": 500, "y": 500}],
+                "current_software": "Explorer",
+            }
+
+            with patch.object(VideoScreenshotExtractor, "_get_frame_at",
+                              return_value=self._synthetic_frame()):
+                self._run_one_action(ext, scroll_action, screenshots_path)
+
+            icons_dir = screenshots_path / "icons"
+            self.assertFalse(
+                icons_dir.exists() and any(icons_dir.glob("record_memory_icon_*.png")),
+                "scroll/wheel actions must not produce icon PNGs",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

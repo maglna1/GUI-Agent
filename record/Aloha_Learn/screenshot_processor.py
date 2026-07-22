@@ -8,13 +8,14 @@ import numpy as np
 class VideoScreenshotExtractor:
     """Extract full + crop screenshots per action and scale coordinates to a target resolution."""
 
-    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6):
+    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6, icon_crop_size=50):
         self.target_width = target_width
         self.target_height = target_height
         self.jpeg_quality = jpeg_quality
         self.crop_size = crop_size
         self.x_size = x_size
         self.x_thick = x_thick
+        self.icon_crop_size = icon_crop_size
 
     def scale_path(self, path, scale_x, scale_y):
         """Scale a list of {x,y} points for drag path."""
@@ -58,6 +59,10 @@ class VideoScreenshotExtractor:
     def _save_jpg(self, path, img):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return cv2.imwrite(path, img, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
+
+    def _save_png(self, path, img):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return cv2.imwrite(path, img)
 
     def _safe_crop(self, frame, x, y, crop_size=256):
         if x is None or y is None:
@@ -144,7 +149,7 @@ class VideoScreenshotExtractor:
             H, W = frame.shape[:2]
             pt = self._primary_point_from_coords(ua.get('coords'))
             actt = act_str.lower()
-            no_coor = ("scroll" in actt) or ("wheel" in actt) or ("hotkey" in actt) or ("type" in actt) or ("presss" in actt)
+            no_coor = ("scroll" in actt) or ("wheel" in actt) or ("hotkey" in actt) or ("type" in actt) or ("press" in actt)
 
             if act_str == "DragStart at" and ua.get('path') and len(ua['path']) >= 2:
                 # === DragStart special handling ===
@@ -190,6 +195,14 @@ class VideoScreenshotExtractor:
                 # 1) Crop around click with black padding (keeps center fixed, no shifting)
                 cx_raw, cy_raw = pt
                 crop_img = self._crop_with_black_padding(draw_frame, cx_raw, cy_raw, crop_size=self.crop_size)
+
+                # 1.5) Save small original click crop (no X marker) as PNG for icon memory
+                icon_crop = self._crop_with_black_padding(draw_frame, cx_raw, cy_raw, crop_size=self.icon_crop_size)
+                icon_fn = f"record_memory_icon_{base}_crop.png"
+                icon_path = screenshots_path / "icons" / icon_fn
+                icon_ok = self._save_png(str(icon_path), icon_crop)
+                if not icon_ok:
+                    raise RuntimeError(f"Could not save icon crop for action at {timestamp}s: {act_str}")
 
                 # 2) Draw semi-transparent X AFTER padding so it's fully visible
                 # X centered in the crop
