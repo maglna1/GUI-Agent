@@ -15,7 +15,7 @@ from screenshot_processor import VideoScreenshotExtractor
 class IconCropSizeConstructorTest(unittest.TestCase):
     def test_zero_arg_constructor_uses_default_icon_crop_size(self):
         ext = VideoScreenshotExtractor()
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
 
     def test_explicit_icon_crop_size_kwarg_is_stored(self):
         ext = VideoScreenshotExtractor(icon_crop_size=80)
@@ -24,7 +24,7 @@ class IconCropSizeConstructorTest(unittest.TestCase):
     def test_existing_positional_args_still_work(self):
         # All 6 pre-existing positional params passed; icon_crop_size must default.
         ext = VideoScreenshotExtractor(1920, 1080, 95, 256, 30, 6)
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
         self.assertEqual(ext.target_width, 1920)
         self.assertEqual(ext.crop_size, 256)
 
@@ -32,7 +32,7 @@ class IconCropSizeConstructorTest(unittest.TestCase):
         ext = VideoScreenshotExtractor(target_width=1280, crop_size=200)
         self.assertEqual(ext.target_width, 1280)
         self.assertEqual(ext.crop_size, 200)
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
 
 
 class SavePngHelperTest(unittest.TestCase):
@@ -113,11 +113,11 @@ class DefaultClickIconSaveTest(unittest.TestCase):
             icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
             self.assertTrue(icon_path.exists(), f"missing icon at {icon_path}")
 
-            # 2. 图标为合法的 50x50 PNG（无损、尺寸准确）
+            # 2. 图标为合法的 icon_crop_size×icon_crop_size PNG（无损、尺寸准确）
             icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
             self.assertIsNotNone(icon)
-            self.assertEqual(icon.shape[0], 50)
-            self.assertEqual(icon.shape[1], 50)
+            self.assertEqual(icon.shape[0], ext.icon_crop_size)
+            self.assertEqual(icon.shape[1], ext.icon_crop_size)
 
             # 2.5. 像素级精确断言：直接对图案化帧调用 _crop_with_black_padding
             # 得到期望图标。这样可以一次性验证：(a) 图标源自原始帧
@@ -160,8 +160,8 @@ class DefaultClickIconSaveTest(unittest.TestCase):
             icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
             icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
 
-            # 形状必须严格为 50x50x3。
-            self.assertEqual(icon.shape, (50, 50, 3))
+            # 形状必须严格为 icon_crop_size×icon_crop_size×3。
+            self.assertEqual(icon.shape, (ext.icon_crop_size, ext.icon_crop_size, 3))
 
             # 直接计算期望裁剪结果：因为 (2, 3) 紧贴角点，顶部和左侧应带有黑色 padding。
             expected_icon = ext._crop_with_black_padding(
@@ -185,13 +185,14 @@ class DefaultClickIconSaveTest(unittest.TestCase):
 
             # 帧内区域（例如图标中心）应为非零图案化像素 —— 确认不全黑，
             # 且采样的内部像素与图案化帧在该位置的取值一致。
-            center = icon[25, 25]
+            half = ext.icon_crop_size // 2
+            center = icon[half, half]
             self.assertFalse(
                 np.array_equal(center, np.zeros(3, dtype=np.uint8)),
                 "center of icon should be non-zero (in-frame patterned source)",
             )
-            # 点击 (2, 3) 且 icon_crop_size=50，half=25，因此图标中心对应帧像素 (2, 3)，
-            # 按构造规则为 (b=2, g=3, r=5)。
+            # 点击 (2, 3) 且 icon_crop_size=ext.icon_crop_size，half=ext.icon_crop_size // 2，
+            # 因此图标中心对应帧像素 (2, 3)，按构造规则为 (b=2, g=3, r=5)。
             self.assertTrue(
                 np.array_equal(center, np.array([2, 3, 5], dtype=np.uint8)),
                 f"icon center must equal frame[3,2]=(2,3,5) BGR; got {center.tolist()}",
