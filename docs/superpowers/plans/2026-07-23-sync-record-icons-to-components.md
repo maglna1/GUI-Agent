@@ -642,34 +642,42 @@ git commit -m "feat(sync): add merge_components_json upsert helper"
 - Consumes: `trace_generator.py:_call_openai` 已有的 `requests.post(url, headers, json, timeout, verify)` 模式；`IconRecord` from `components_sync`。
 - Produces:
   - `class ComponentsLLMError(Exception)` —— 编排层捕获后回退。
-  - `VideoScreenshotExtractor._request_component_labels(self, records: list[IconRecord], dest: str) -> dict[str, str]` —— 单次 LLM 调用返回 `{filename: raw_label}`；任何失败抛 `ComponentsLLMError`。
+  - `VideoScreenshotExtractor._request_component_labels(self, records: list[IconRecord], screenshots_dir: Path) -> dict[str, str]` —— 单次 LLM 调用返回 `{filename: raw_label}`；任何失败抛 `ComponentsLLMError`。
 
 - [ ] **Step 1：编写失败的测试**
 
-向 `record/Aloha_Learn/tests/test_screenshot_processor.py` 顶部新增导入与测试：
+向 `record/Aloha_Learn/tests/test_screenshot_processor.py` 顶部 import 块追加：
 
 ```python
-import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from components_sync import IconRecord
-from screenshot_processor import ComponentsLLMError
 ```
 
-然后在文件末尾（`if __name__ == "__main__":` 之前）追加：
+向 `record/Aloha_Learn/tests/test_screenshot_processor.py` 末尾（`if __name__ == "__main__":` 之前）追加：
 
 ```python
 class RequestComponentLabelsTest(unittest.TestCase):
+    FILENAME = "record_memory_icon_10.854s_crop.png"
+
     def _records(self):
         return [
             IconRecord(
-                filename="record_memory_icon_10.854s_crop.png",
+                filename=self.FILENAME,
                 action="LClick at",
                 coords=(820, 450),
                 current_software="Explorer",
                 base="10.854s",
             ),
         ]
+
+    def _setup_icon(self, screenshots_dir):
+        """Create one valid PNG at <screenshots_dir>/icons/<FILENAME> so the
+        production code's open() call doesn't raise FileNotFoundError."""
+        (screenshots_dir / "icons").mkdir(parents=True, exist_ok=True)
+        ok, buf = cv2.imencode(".png", np.zeros((4, 4, 3), dtype=np.uint8))
+        self.assertTrue(ok)
+        (screenshots_dir / "icons" / self.FILENAME).write_bytes(bytes(buf))
 
     def _mock_response(self, content):
         resp = MagicMock()
@@ -686,23 +694,27 @@ class RequestComponentLabelsTest(unittest.TestCase):
             "OPENAI_API_KEY": "sk-test",
             "OPENAI_VERIFY_SSL": "true",
         }, clear=False):
-            with patch("requests.post", return_value=self._mock_response(
-                '{"record_memory_icon_10.854s_crop.png": "taskbar_search"}'
-            )) as p:
-                ext = VideoScreenshotExtractor()
-                labels = ext._request_component_labels(self._records(), "/some/dest")
-        self.assertEqual(labels, {"record_memory_icon_10.854s_crop.png": "taskbar_search"})
-        # Verify the request was sent to chat/completions with the right shape
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response(
+                    f'{{"{self.FILENAME}": "taskbar_search"}}'
+                )) as p:
+                    ext = VideoScreenshotExtractor()
+                    labels = ext._request_component_labels(self._records(), screenshots_dir)
+
+        self.assertEqual(labels, {self.FILENAME: "taskbar_search"})
         called_args, called_kwargs = p.call_args
         self.assertIn("/chat/completions", called_args[0])
         self.assertEqual(called_kwargs["json"]["model"], "gpt-4o")
         self.assertEqual(called_kwargs["timeout"], 120)
-        # Content carries both text metadata and one inline image
         msgs = called_kwargs["json"]["messages"]
         self.assertEqual(len(msgs), 1)
         content = msgs[0]["content"]
-        self.assertTrue(any(c.get("type") == "text" and "taskbar_search" not in c.get("text", "")
-                            for c in content))
+        self.assertTrue(any(
+            c.get("type") == "text" and "taskbar_search" not in c.get("text", "")
+            for c in content
+        ), "content must include text metadata (without the LLM-provided label)")
         self.assertTrue(any(c.get("type") == "image_url" for c in content))
 
     def test_raises_components_llm_error_on_http_failure(self):
@@ -711,12 +723,15 @@ class RequestComponentLabelsTest(unittest.TestCase):
             "OPENAI_MODEL": "gpt-4o",
             "OPENAI_API_KEY": "sk-test",
         }, clear=False):
-            resp = MagicMock()
-            resp.raise_for_status = MagicMock(side_effect=Exception("HTTP 500"))
-            with patch("requests.post", return_value=resp):
-                ext = VideoScreenshotExtractor()
-                with self.assertRaises(ComponentsLLMError):
-                    ext._request_component_labels(self._records(), "/some/dest")
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock(side_effect=Exception("HTTP 500"))
+                with patch("requests.post", return_value=resp):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
 
     def test_raises_components_llm_error_on_invalid_json(self):
         with patch.dict(os.environ, {
@@ -724,10 +739,13 @@ class RequestComponentLabelsTest(unittest.TestCase):
             "OPENAI_MODEL": "gpt-4o",
             "OPENAI_API_KEY": "sk-test",
         }, clear=False):
-            with patch("requests.post", return_value=self._mock_response("not json")):
-                ext = VideoScreenshotExtractor()
-                with self.assertRaises(ComponentsLLMError):
-                    ext._request_component_labels(self._records(), "/some/dest")
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response("not json")):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
 
     def test_raises_components_llm_error_when_missing_input_filenames(self):
         # LLM returns labels for a different file; missing files = error
@@ -736,12 +754,15 @@ class RequestComponentLabelsTest(unittest.TestCase):
             "OPENAI_MODEL": "gpt-4o",
             "OPENAI_API_KEY": "sk-test",
         }, clear=False):
-            with patch("requests.post", return_value=self._mock_response(
-                '{"unrelated.png": "foo"}'
-            )):
-                ext = VideoScreenshotExtractor()
-                with self.assertRaises(ComponentsLLMError):
-                    ext._request_component_labels(self._records(), "/some/dest")
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response(
+                    '{"unrelated.png": "foo"}'
+                )):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
 ```
 
 - [ ] **Step 2：运行测试确认失败**
@@ -750,148 +771,43 @@ class RequestComponentLabelsTest(unittest.TestCase):
 PYTHONPATH=. python -m unittest record.Aloha_Learn.tests.test_screenshot_processor.RequestComponentLabelsTest -v
 ```
 
-预期：4 个测试因 `ImportError` / `AttributeError` 失败。
+预期：4 个测试因 `ImportError: cannot import name 'ComponentsLLMError'` 失败。
 
 - [ ] **Step 3：实现 `ComponentsLLMError` + `_request_component_labels`**
 
-向 `record/Aloha_Learn/screenshot_processor.py` 顶部（import 块之后）追加：
+向 `record/Aloha_Learn/screenshot_processor.py` 顶部 import 块追加：
 
 ```python
 import base64
-import requests as _requests_for_components  # noqa: F401  (use existing requests import)
+```
 
+向 `record/Aloha_Learn/screenshot_processor.py` 顶部 import 块（追加在所有现有 import 之后）追加：
 
+```python
 class ComponentsLLMError(Exception):
     """Raised when the components-naming LLM call fails for any reason.
 
     The orchestrator catches this and falls back to timestamp-keyed labels so
-    record-project keeps running.
+    process_project() keeps running.
     """
 ```
-
-（如果 `screenshot_processor.py` 顶部还没有 `import requests`，则改写为：
-```python
-import requests
-```
-不需要 `base64` 单独 import —— 见下方实现用 `cv2`/`Path` 与 base64 标准库。）
 
 向 `record/Aloha_Learn/screenshot_processor.py` 中 `VideoScreenshotExtractor` 类的 `_save_png` 之后追加新方法：
 
 ```python
-    def _request_component_labels(self, records, dest):
+    def _request_component_labels(self, records, screenshots_dir):
         """Single batched multimodal call to the configured OpenAI-compatible LLM.
 
         Builds a system prompt instructing the model to assign snake_case
         content labels to each click icon, sends all icons inline as base64
         PNGs plus per-icon metadata, and parses the JSON-object response.
 
+        screenshots_dir is a pathlib.Path pointing at the project's screenshots/
+        directory. Icons are read from <screenshots_dir>/icons/<record.filename>.
+
         Raises ComponentsLLMError on any failure (HTTP, JSON parse, missing
-        keys, unknown keys, empty result) — the orchestrator decides whether
-        to retry, fall back, or surface to the caller.
+        keys, unknown keys, missing API key/model, empty result).
         """
-        api_key = (
-            os.environ.get("OPENAI_API_KEY", "")
-            or os.environ.get("MIDSCENE_MODEL_API_KEY", "")
-        )
-        if not api_key:
-            raise ComponentsLLMError("OPENAI_API_KEY missing")
-
-        base_url = (
-            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-        )
-        model = os.environ.get("OPENAI_MODEL", "")
-        if not model:
-            raise ComponentsLLMError("OPENAI_MODEL missing")
-
-        verify_ssl = os.environ.get("OPENAI_VERIFY_SSL", "true").lower() not in ("0", "false", "no")
-
-        system_prompt = (
-            "You label desktop UI click crops. For each input icon, return a "
-            "snake_case content label (lowercase letters, digits, underscores "
-            "only; max 30 chars) describing what UI element the click targets. "
-            "Respond with a JSON object mapping each input filename to its "
-            "label. Do not add commentary or wrap in markdown."
-        )
-
-        filenames = [r.filename for r in records]
-        content = [{"type": "text", "text": "Icon metadata follows."}]
-        for r in records:
-            # Read PNG and inline as base64 data URI.
-            with open(self._icon_path_for_record(r, dest), "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("ascii")
-            content.append({
-                "type": "text",
-                "text": (
-                    f"{r.filename} | action={r.action} | "
-                    f"coords=({r.coords[0]},{r.coords[1]}) | "
-                    f"software={r.current_software} | timestamp={r.base}"
-                ),
-            })
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{b64}"},
-            })
-
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content},
-            ],
-            "temperature": 0.0,
-            "response_format": {"type": "json_object"},
-        }
-
-        url = f"{base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-
-        try:
-            r = requests.post(url, headers=headers, json=payload,
-                              timeout=120, verify=verify_ssl)
-            r.raise_for_status()
-            body = r.json()
-            content_text = body["choices"][0]["message"]["content"]
-            parsed = json.loads(content_text)
-        except Exception as e:
-            raise ComponentsLLMError(f"LLM call/parse failed: {e}") from e
-
-        if not isinstance(parsed, dict):
-            raise ComponentsLLMError(f"LLM response is not a JSON object: {type(parsed).__name__}")
-
-        # Validate: every input filename must be in the response.
-        missing = [fn for fn in filenames if fn not in parsed]
-        if missing:
-            raise ComponentsLLMError(f"LLM response missing filenames: {missing}")
-        unknown = [k for k in parsed.keys() if k not in filenames]
-        if unknown:
-            # Be strict for now: unknown keys mean the LLM hallucinated filenames.
-            raise ComponentsLLMError(f"LLM response contains unknown filenames: {unknown}")
-
-        return {fn: str(parsed[fn]) for fn in filenames}
-```
-
-然后追加辅助方法（用于读取 icon PNG 字节）：
-
-```python
-    def _icon_path_for_record(self, record, dest):
-        # Placeholder; the real path computation happens in Task 6 when
-        # we have the screenshots_dir in scope. For now, look up via the
-        # record's filename in screenshots_dir/icons/.
-        return os.path.join(dest, "icons", record.filename)
-```
-
-注意：上面的 `_icon_path_for_record` 是临时占位实现 —— 它依赖 Task 6 把 `screenshots_dir` 纳入。但因为本任务的测试用 `patch("requests.post", ...)` 完全 mock 了 HTTP 请求，`open()` 不会被真实调用，所以占位返回的路径不会被读。Task 6 中我们会改写该方法或由编排层把 `screenshots_dir` 显式传入。
-
-实际更简洁的实现：把 `_icon_path_for_record` 移除；`_request_component_labels` 接受 `screenshots_dir: Path` 参数（而不是 `dest`）；image 路径用 `screenshots_dir / "icons" / record.filename`。后续 Task 6 接入时再修。
-
-**修正版 `_request_component_labels`（更准确）**：
-
-```python
-    def _request_component_labels(self, records, screenshots_dir):
-        """screenshots_dir: pathlib.Path pointing at the project's screenshots/ dir."""
         api_key = (
             os.environ.get("OPENAI_API_KEY", "")
             or os.environ.get("MIDSCENE_MODEL_API_KEY", "")
@@ -973,10 +889,6 @@ import requests
 
         return {fn: str(parsed[fn]) for fn in filenames}
 ```
-
-并且对应的测试 `_request_component_labels(self._records(), "/some/dest")` 需要改为 `_request_component_labels(self._records(), tmp_path / "screenshots")` —— 在测试 `setUp` 中创建临时目录并预置 icon 文件（让 `open()` 不抛 `FileNotFoundError`）。具体写法：在 `_records()` 后增加 helper `_setup_icon(tmpdir, filename)`，把一张最小 PNG bytes 写入 `tmpdir/icons/<filename>`；每个测试用 `tempfile.TemporaryDirectory()` 起步。
-
-> 实现者提示：因 LLM 调用全程 mock HTTP，临时 PNG 文件只需 `os.path.join(tmpdir, "icons", filename)` 处存在即可；内容随意。
 
 - [ ] **Step 4：运行测试确认通过**
 
