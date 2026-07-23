@@ -57,3 +57,22 @@ def sanitize_label(raw: str) -> str:
     if not s:
         raise ValueError(f"label '{raw}' has no safe characters after sanitization")
     return s
+
+
+def dedup_labels(labels):
+    """Append _2/_3/... suffixes to duplicates so each returned label is unique.
+
+    Order-preserving: first occurrence wins without suffix; later collisions get
+    suffixes that avoid clashing with already-seen labels.
+    """
+    seen = set()
+    out = []
+    for label in labels:
+        candidate = label
+        suffix = 2
+        while candidate in seen:
+            candidate = f"{label}_{suffix}"
+            suffix += 1
+        seen.add(candidate)
+        out.append(candidate)
+    return out

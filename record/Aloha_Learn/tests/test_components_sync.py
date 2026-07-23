@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components_sync import IconRecord, sanitize_label
+from components_sync import IconRecord, sanitize_label, dedup_labels
 
 
 class SanitizeLabelTest(unittest.TestCase):
@@ -47,6 +47,30 @@ class IconRecordTest(unittest.TestCase):
         self.assertEqual(r.coords, (820, 450))
         self.assertEqual(r.current_software, "Explorer")
         self.assertEqual(r.base, "10.854s")
+
+
+class DedupLabelsTest(unittest.TestCase):
+    def test_no_duplicates_returns_unchanged(self):
+        self.assertEqual(
+            dedup_labels(["start_button", "taskbar_search", "settings_gear"]),
+            ["start_button", "taskbar_search", "settings_gear"],
+        )
+
+    def test_simple_duplicates_get_numeric_suffix(self):
+        self.assertEqual(
+            dedup_labels(["foo", "foo", "bar"]),
+            ["foo", "foo_2", "bar"],
+        )
+
+    def test_suffix_collides_with_existing_label(self):
+        # "x", "x_2", "x" -> third one must skip to "x_3"
+        self.assertEqual(
+            dedup_labels(["x", "x_2", "x"]),
+            ["x", "x_2", "x_3"],
+        )
+
+    def test_empty_list(self):
+        self.assertEqual(dedup_labels([]), [])
 
 
 if __name__ == "__main__":
