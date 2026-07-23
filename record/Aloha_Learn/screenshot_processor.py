@@ -1,8 +1,18 @@
+import base64
 import os
 import cv2
 import json
 from pathlib import Path
 import numpy as np
+import requests
+
+
+class ComponentsLLMError(Exception):
+    """Raised when the components-naming LLM call fails for any reason.
+
+    The orchestrator catches this and falls back to timestamp-keyed labels so
+    process_project() keeps running.
+    """
 
 
 class VideoScreenshotExtractor:
@@ -63,6 +73,100 @@ class VideoScreenshotExtractor:
     def _save_png(self, path, img):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return cv2.imwrite(path, img)
+
+    def _request_component_labels(self, records, screenshots_dir):
+        """Single batched multimodal call to the configured OpenAI-compatible LLM.
+
+        Builds a system prompt instructing the model to assign snake_case
+        content labels to each click icon, sends all icons inline as base64
+        PNGs plus per-icon metadata, and parses the JSON-object response.
+
+        screenshots_dir is a pathlib.Path pointing at the project's screenshots/
+        directory. Icons are read from <screenshots_dir>/icons/<record.filename>.
+
+        Raises ComponentsLLMError on any failure (HTTP, JSON parse, missing
+        keys, unknown keys, missing API key/model, empty result).
+        """
+        api_key = (
+            os.environ.get("OPENAI_API_KEY", "")
+            or os.environ.get("MIDSCENE_MODEL_API_KEY", "")
+        )
+        if not api_key:
+            raise ComponentsLLMError("OPENAI_API_KEY missing")
+
+        base_url = (
+            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        )
+        model = os.environ.get("OPENAI_MODEL", "")
+        if not model:
+            raise ComponentsLLMError("OPENAI_MODEL missing")
+
+        verify_ssl = os.environ.get("OPENAI_VERIFY_SSL", "true").lower() not in ("0", "false", "no")
+
+        system_prompt = (
+            "You label desktop UI click crops. For each input icon, return a "
+            "snake_case content label (lowercase letters, digits, underscores "
+            "only; max 30 chars) describing what UI element the click targets. "
+            "Respond with a JSON object mapping each input filename to its "
+            "label. Do not add commentary or wrap in markdown."
+        )
+
+        filenames = [r.filename for r in records]
+        content = [{"type": "text", "text": "Icon metadata follows."}]
+        for r in records:
+            icon_path = screenshots_dir / "icons" / r.filename
+            with open(icon_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+            content.append({
+                "type": "text",
+                "text": (
+                    f"{r.filename} | action={r.action} | "
+                    f"coords=({r.coords[0]},{r.coords[1]}) | "
+                    f"software={r.current_software} | timestamp={r.base}"
+                ),
+            })
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
+            })
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content},
+            ],
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"},
+        }
+
+        url = f"{base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            r = requests.post(url, headers=headers, json=payload,
+                              timeout=120, verify=verify_ssl)
+            r.raise_for_status()
+            body = r.json()
+            content_text = body["choices"][0]["message"]["content"]
+            parsed = json.loads(content_text)
+        except Exception as e:
+            raise ComponentsLLMError(f"LLM call/parse failed: {e}") from e
+
+        if not isinstance(parsed, dict):
+            raise ComponentsLLMError(f"LLM response is not a JSON object: {type(parsed).__name__}")
+
+        missing = [fn for fn in filenames if fn not in parsed]
+        if missing:
+            raise ComponentsLLMError(f"LLM response missing filenames: {missing}")
+        unknown = [k for k in parsed.keys() if k not in filenames]
+        if unknown:
+            raise ComponentsLLMError(f"LLM response contains unknown filenames: {unknown}")
+
+        return {fn: str(parsed[fn]) for fn in filenames}
 
     def _safe_crop(self, frame, x, y, crop_size=256):
         if x is None or y is None:

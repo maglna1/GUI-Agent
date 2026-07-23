@@ -3,13 +3,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from screenshot_processor import VideoScreenshotExtractor
+from screenshot_processor import VideoScreenshotExtractor, ComponentsLLMError
+from components_sync import IconRecord
 
 
 class IconCropSizeConstructorTest(unittest.TestCase):
@@ -238,6 +239,115 @@ class DefaultClickIconSaveTest(unittest.TestCase):
                 icons_dir.exists() and any(icons_dir.glob("record_memory_icon_*.png")),
                 "scroll/wheel actions must not produce icon PNGs",
             )
+
+
+class RequestComponentLabelsTest(unittest.TestCase):
+    FILENAME = "record_memory_icon_10.854s_crop.png"
+
+    def _records(self):
+        return [
+            IconRecord(
+                filename=self.FILENAME,
+                action="LClick at",
+                coords=(820, 450),
+                current_software="Explorer",
+                base="10.854s",
+            ),
+        ]
+
+    def _setup_icon(self, screenshots_dir):
+        """Create one valid PNG at <screenshots_dir>/icons/<FILENAME> so the
+        production code's open() call doesn't raise FileNotFoundError."""
+        (screenshots_dir / "icons").mkdir(parents=True, exist_ok=True)
+        ok, buf = cv2.imencode(".png", np.zeros((4, 4, 3), dtype=np.uint8))
+        self.assertTrue(ok)
+        (screenshots_dir / "icons" / self.FILENAME).write_bytes(bytes(buf))
+
+    def _mock_response(self, content):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={
+            "choices": [{"message": {"content": content}}]
+        })
+        return resp
+
+    def test_returns_label_map_on_success(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+            "OPENAI_VERIFY_SSL": "true",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response(
+                    f'{{"{self.FILENAME}": "taskbar_search"}}'
+                )) as p:
+                    ext = VideoScreenshotExtractor()
+                    labels = ext._request_component_labels(self._records(), screenshots_dir)
+
+        self.assertEqual(labels, {self.FILENAME: "taskbar_search"})
+        called_args, called_kwargs = p.call_args
+        self.assertIn("/chat/completions", called_args[0])
+        self.assertEqual(called_kwargs["json"]["model"], "gpt-4o")
+        self.assertEqual(called_kwargs["timeout"], 120)
+        msgs = called_kwargs["json"]["messages"]
+        self.assertEqual(len(msgs), 2)
+        # The user message carries the icon metadata + inline images.
+        content = msgs[1]["content"]
+        self.assertTrue(any(
+            c.get("type") == "text" and "taskbar_search" not in c.get("text", "")
+            for c in content
+        ), "content must include text metadata (without the LLM-provided label)")
+        self.assertTrue(any(c.get("type") == "image_url" for c in content))
+
+    def test_raises_components_llm_error_on_http_failure(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock(side_effect=Exception("HTTP 500"))
+                with patch("requests.post", return_value=resp):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
+
+    def test_raises_components_llm_error_on_invalid_json(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response("not json")):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
+
+    def test_raises_components_llm_error_when_missing_input_filenames(self):
+        # LLM returns labels for a different file; missing files = error
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response(
+                    '{"unrelated.png": "foo"}'
+                )):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
 
 
 if __name__ == "__main__":
