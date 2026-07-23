@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components_sync import IconRecord, sanitize_label, dedup_labels
+from components_sync import IconRecord, sanitize_label, dedup_labels, ComponentEntry, build_component_entry
 
 
 class SanitizeLabelTest(unittest.TestCase):
@@ -71,6 +71,78 @@ class DedupLabelsTest(unittest.TestCase):
 
     def test_empty_list(self):
         self.assertEqual(dedup_labels([]), [])
+
+
+class BuildComponentEntryTest(unittest.TestCase):
+    def test_returns_full_schema_with_all_fields(self):
+        e = build_component_entry(
+            label="start_button",
+            icon_file="components/start_button.png",
+            learned_at="2026-07-23 11:00:00",
+            last_seen="2026-07-23 11:05:00",
+            seen_count=3,
+        )
+        self.assertEqual(e, {
+            "type": "icon",
+            "source": "learn_batch",
+            "icon_file": "components/start_button.png",
+            "label": "start_button",
+            "learned_at": "2026-07-23 11:00:00",
+            "last_seen": "2026-07-23 11:05:00",
+            "seen_count": 3,
+            "consecutive_misses": 0,
+            "base_memory": True,
+        })
+
+    def test_default_base_memory_is_true(self):
+        e = build_component_entry(
+            label="x",
+            icon_file="components/x.png",
+            learned_at="t",
+            last_seen="t",
+            seen_count=1,
+        )
+        self.assertTrue(e["base_memory"])
+
+    def test_explicit_base_memory_true_is_honored(self):
+        e = build_component_entry(
+            label="x",
+            icon_file="components/x.png",
+            learned_at="t",
+            last_seen="t",
+            seen_count=1,
+            base_memory=True,
+        )
+        self.assertTrue(e["base_memory"])
+
+    def test_consecutive_misses_is_always_zero(self):
+        # Upsert always resets to 0; callers should never set a non-zero value.
+        e = build_component_entry(
+            label="x",
+            icon_file="components/x.png",
+            learned_at="t",
+            last_seen="t",
+            seen_count=5,
+        )
+        self.assertEqual(e["consecutive_misses"], 0)
+
+
+class ComponentEntryTest(unittest.TestCase):
+    def test_constructs(self):
+        e = ComponentEntry(
+            type="icon",
+            source="learn_batch",
+            icon_file="components/x.png",
+            label="x",
+            learned_at="t",
+            last_seen="t",
+            seen_count=1,
+            consecutive_misses=0,
+            base_memory=True,
+        )
+        self.assertEqual(e.label, "x")
+        self.assertEqual(e.seen_count, 1)
+        self.assertTrue(e.base_memory)
 
 
 if __name__ == "__main__":

@@ -76,3 +76,47 @@ def dedup_labels(labels):
         seen.add(candidate)
         out.append(candidate)
     return out
+
+
+@dataclass(frozen=True)
+class ComponentEntry:
+    """One entry in the harness components.json — mirrors the schema of the
+    existing 17 desktop/ entries (see gui_harness/memory/apps/desktop/components.json).
+    """
+
+    type: str
+    source: str
+    icon_file: str
+    label: str
+    learned_at: str
+    last_seen: str
+    seen_count: int
+    consecutive_misses: int
+    base_memory: bool
+
+
+def build_component_entry(
+    *,
+    label: str,
+    icon_file: str,
+    learned_at: str,
+    last_seen: str,
+    seen_count: int,
+    base_memory: bool = True,
+) -> dict:
+    """Construct a full component entry dict.
+
+    base_memory defaults to True and is load-bearing: harness uses it to skip
+    freshly-imported icons from automatic forgetting. Never set to False.
+    """
+    return ComponentEntry(
+        type="icon",
+        source="learn_batch",
+        icon_file=icon_file,
+        label=label,
+        learned_at=learned_at,
+        last_seen=last_seen,
+        seen_count=seen_count,
+        consecutive_misses=0,
+        base_memory=base_memory,
+    ).__dict__
