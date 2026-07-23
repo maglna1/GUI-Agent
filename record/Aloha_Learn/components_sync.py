@@ -120,3 +120,50 @@ def build_component_entry(
         consecutive_misses=0,
         base_memory=base_memory,
     ).__dict__
+
+
+def merge_components_json(existing, additions, now_str):
+    """Upsert component entries into an existing components.json dict.
+
+    Args:
+        existing: dict mapping label -> entry dict (loaded from disk; may be empty).
+        additions: dict mapping label -> (new_entry_dict, source_filename). The
+            source_filename is informational only (used for diagnostics in
+            callers' logs); it does not appear in the final JSON.
+        now_str: timestamp string ("YYYY-MM-DD HH:MM:SS") used for last_seen on
+            every entry and for learned_at on new keys.
+
+    Returns:
+        (merged_dict, keys_added, keys_updated) — keys_added is the list of
+        labels that were newly inserted; keys_updated is the list of labels
+        that were upserted into a pre-existing entry.
+    """
+    merged = dict(existing)
+    keys_added = []
+    keys_updated = []
+
+    for label, (new_entry, _src_filename) in additions.items():
+        prior = merged.get(label)
+        if prior is None:
+            # New key: use now_str for both learned_at and last_seen.
+            entry = dict(new_entry)
+            entry["learned_at"] = now_str
+            entry["last_seen"] = now_str
+            entry["seen_count"] = int(entry.get("seen_count", 1))
+            entry["consecutive_misses"] = 0
+            entry["base_memory"] = True
+            merged[label] = entry
+            keys_added.append(label)
+        else:
+            # Upsert: preserve learned_at, refresh last_seen, increment seen_count,
+            # reset consecutive_misses. Carry forward type/source/icon_file/label
+            # from the prior entry (they're the contract — only activity changes).
+            entry = dict(prior)
+            entry["last_seen"] = now_str
+            entry["seen_count"] = int(prior.get("seen_count", 0)) + 1
+            entry["consecutive_misses"] = 0
+            entry["base_memory"] = True
+            merged[label] = entry
+            keys_updated.append(label)
+
+    return merged, keys_added, keys_updated
