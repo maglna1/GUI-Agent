@@ -348,6 +348,112 @@ class VideoScreenshotExtractor:
             updated.append(ua)
         return updated
     
+    def _collect_icon_records(self, actions, screenshots_dir):
+        """Walk actions + screenshots_dir/icons/ to build IconRecord list.
+
+        Only default-click branches produce icons in this repo's flow
+        (see process_actions at line ~189-205). We match each icon file
+        to the action whose base (timestamp - 0.1) corresponds to its filename.
+        """
+        icon_dir = screenshots_dir / "icons"
+        if not icon_dir.exists():
+            return []
+
+        # Map base -> action for O(1) lookup
+        base_to_action = {}
+        for a in actions:
+            ts = abs(a.get("timestamp", 0) - 0.1)
+            base = f"{ts:.3f}s"
+            base_to_action[base] = a
+
+        records = []
+        for icon_path in sorted(icon_dir.glob("record_memory_icon_*_crop.png")):
+            filename = icon_path.name
+            # filename = "record_memory_icon_<base>_crop.png"; strip prefix/suffix
+            base = filename[len("record_memory_icon_"):-len("_crop.png")]
+            if base not in base_to_action:
+                continue
+            a = base_to_action[base]
+            coords_list = a.get("coords", [])
+            if not coords_list or not isinstance(coords_list, list):
+                continue
+            coords = (int(coords_list[0]["x"]), int(coords_list[0]["y"]))
+            records.append(IconRecord(
+                filename=filename,
+                action=str(a.get("action", "")),
+                coords=coords,
+                current_software=str(a.get("current_software", "")),
+                base=base,
+            ))
+        return records
+
+    def _sync_components_to_dest(self, actions, screenshots_dir, dest):
+        """End-to-end sync orchestration; returns the meta-delta dict."""
+        records = self._collect_icon_records(actions, screenshots_dir)
+
+        if not records:
+            # Nothing to sync but the dest may still need to be touched
+            # (e.g. ensure components.json exists). We keep meta consistent.
+            return {
+                "components_synced": True,
+                "components_dest": str(dest),
+                "components_keys_added": [],
+                "components_keys_updated": [],
+                "components_fallback_to_timestamp": False,
+            }
+
+        # Ask the LLM for labels; fall back to timestamp keys on any failure.
+        # timestamp_keys are already snake_case + safe, so they bypass sanitize.
+        fallback = False
+        timestamp_keys = {
+            r.filename: f"record_memory_icon_{r.base.replace('.', '_')}_crop"
+            for r in records
+        }
+        try:
+            label_map = self._request_component_labels(records, screenshots_dir)
+        except ComponentsLLMError as e:
+            print(f"[sync] WARNING: LLM labeling failed ({e}); using timestamp keys")
+            label_map = dict(timestamp_keys)
+            fallback = True
+
+        # Sanitize LLM-returned labels (skip the safe timestamp keys).
+        safe_labels = []
+        for r in records:
+            raw = label_map[r.filename]
+            if raw in timestamp_keys.values():
+                # Already a valid timestamp key — preserve verbatim (incl. >30 chars).
+                safe_labels.append(raw)
+            else:
+                try:
+                    safe_labels.append(sanitize_label(raw))
+                except ValueError as e:
+                    print(f"[sync] WARNING: sanitize_label failed for {r.filename} ({e}); using timestamp key")
+                    safe_labels.append(timestamp_keys[r.filename])
+                    fallback = True
+
+        safe_labels = dedup_labels(safe_labels)
+
+        # Pair safe_label with the source filename for the helper.
+        additions = {
+            safe: (safe, rec.filename)
+            for safe, rec in zip(safe_labels, records)
+        }
+
+        existing = self._load_components_json(dest)
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        keys_added, keys_updated = self._apply_components_updates(
+            dest, existing, additions, screenshots_dir / "icons", now_str,
+        )
+
+        return {
+            "components_synced": True,
+            "components_dest": str(dest),
+            "components_keys_added": keys_added,
+            "components_keys_updated": keys_updated,
+            "components_fallback_to_timestamp": fallback,
+        }
+
     def _load_components_json(self, dest):
         """Read dest/components.json. Missing or corrupt -> {} (with warning)."""
         json_path = dest / "components.json"

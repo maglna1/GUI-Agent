@@ -470,5 +470,109 @@ class ApplyComponentsUpdatesTest(unittest.TestCase):
                     )
 
 
+class SyncComponentsToDestTest(unittest.TestCase):
+    def _png_bytes(self):
+        ok, buf = cv2.imencode(".png", np.zeros((4, 4, 3), dtype=np.uint8))
+        self.assertTrue(ok)
+        return bytes(buf)
+
+    def _setup(self, root):
+        """Create a screenshots_dir with one icon and matching action."""
+        screenshots_dir = root / "screenshots"
+        icons = screenshots_dir / "icons"
+        icons.mkdir(parents=True)
+        (icons / "record_memory_icon_10.854s_crop.png").write_bytes(self._png_bytes())
+        action = {
+            "timestamp": 10.954,
+            "action": "LClick at",
+            "coords": [{"x": 820, "y": 450}],
+            "current_software": "Explorer",
+            "screenshot_full": "screenshots/10.854s.jpg",
+            "screenshot_crop": "screenshots/10.854s.crop.jpg",
+        }
+        return screenshots_dir, [action]
+
+    def test_returns_meta_with_keys_added_on_success(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            screenshots_dir, actions = self._setup(tmp)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            with patch.object(
+                ext, "_request_component_labels",
+                return_value={"record_memory_icon_10.854s_crop.png": "Taskbar Search"},
+            ):
+                meta = ext._sync_components_to_dest(actions, screenshots_dir, dest)
+
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_dest"], str(dest))
+            self.assertEqual(meta["components_keys_added"], ["taskbar_search"])
+            self.assertEqual(meta["components_keys_updated"], [])
+            self.assertEqual(meta["components_fallback_to_timestamp"], False)
+
+            # dest/components/taskbar_search.png exists, components.json contains the entry
+            self.assertTrue((dest / "components" / "taskbar_search.png").exists())
+            data = json.loads((dest / "components.json").read_text(encoding="utf-8"))
+            self.assertIn("taskbar_search", data)
+            self.assertEqual(data["taskbar_search"]["label"], "taskbar_search")
+            self.assertEqual(data["taskbar_search"]["icon_file"], "components/taskbar_search.png")
+
+    def test_falls_back_to_timestamp_keys_when_llm_raises(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            screenshots_dir, actions = self._setup(tmp)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            with patch.object(
+                ext, "_request_component_labels",
+                side_effect=ComponentsLLMError("network fail"),
+            ):
+                meta = ext._sync_components_to_dest(actions, screenshots_dir, dest)
+
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_fallback_to_timestamp"], True)
+            self.assertEqual(meta["components_keys_added"], ["record_memory_icon_10_854s_crop"])
+            # PNG was copied under the timestamp-key name
+            self.assertTrue(
+                (dest / "components" / "record_memory_icon_10_854s_crop.png").exists()
+            )
+
+    def test_skips_non_default_click_actions(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            screenshots_dir = tmp / "screenshots"
+            icons = screenshots_dir / "icons"
+            icons.mkdir(parents=True)
+            # No icon files at all -> sync has nothing to do
+            actions = [
+                {"timestamp": 10.954, "action": "LClick at",
+                 "coords": [{"x": 1, "y": 1}], "current_software": "X"},
+                {"timestamp": 11.0, "action": "Wheel at",
+                 "coords": [{"x": 1, "y": 1}], "current_software": "X"},
+                {"timestamp": 12.0, "action": "DragStart at",
+                 "coords": [{"x": 1, "y": 1}], "current_software": "X",
+                 "path": [{"x": 1, "y": 1}, {"x": 2, "y": 2}]},
+                {"timestamp": 13.0, "action": "CONFIG", "coords": {}},
+                {"timestamp": 14.0, "action": "Active Window: Foo",
+                 "coords": [{"x": 0, "y": 0}]},
+            ]
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            # LLM should never be called because there are no icons.
+            with patch.object(ext, "_request_component_labels") as mock_llm:
+                meta = ext._sync_components_to_dest(actions, screenshots_dir, dest)
+
+            mock_llm.assert_not_called()
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_keys_added"], [])
+            self.assertEqual(meta["components_keys_updated"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
