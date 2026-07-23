@@ -28,10 +28,10 @@
 
 ## 4. LLM 客户端封装
 
-- [ ] 4.1 在 `screenshot_processor.py` 新增 `_request_component_labels(records, dest)` 方法：读 `OPENAI_BASE_URL` / `OPENAI_MODEL` / `OPENAI_API_KEY` / `OPENAI_VERIFY_SSL`（与 `trace_generator.py` 同样使用 `openai` SDK）。
+- [ ] 4.1 在 `screenshot_processor.py` 新增 `_request_component_labels(records, screenshots_dir)` 方法：读 `OPENAI_BASE_URL` / `OPENAI_MODEL` / `OPENAI_API_KEY` / `OPENAI_VERIFY_SSL`（与 `trace_generator.py:_call_openai` 同模式，使用 `requests.post` 调 `/chat/completions`；本仓依赖里无 `openai` SDK，`pyproject.toml` 只有 `requests`）。
 - [ ] 4.2 构造 multimodal message：system prompt 说明任务与输出约束；user message 含每条 icon 的 `{text: "<fn> | action=<X> | coords=<x,y> | software=<Y> | timestamp=<Z>s", image_url: "data:image/png;base64,<...>"}`。
 - [ ] 4.3 `response_format={"type": "json_object"}`；校验返回 JSON object 键集 ⊆ 输入文件名集合；不符 → 抛 `ComponentsLLMError`。
-- [ ] 4.4 任何 `openai.OpenAIError` / `requests.RequestException` / `json.JSONDecodeError` → 抛 `ComponentsLLMError`（由上层回退）。
+- [ ] 4.4 任何 `requests.RequestException` / HTTP 4xx 5xx（`r.raise_for_status()` 抛 `HTTPError`）/ `json.JSONDecodeError` / 网络超时 → 抛 `ComponentsLLMError`（由上层回退）。
 
 ## 5. 单元测试
 

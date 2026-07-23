@@ -52,7 +52,7 @@
 LLM 调用任何异常（网络错 / 4xx 5xx / 超时 / JSON 解析失败 / schema 不符）SHALL 被捕获并视为整批失败。
 
 #### Scenario: 网络或服务异常
-- **WHEN** LLM 调用抛 `openai.OpenAIError` 或类似异常
+- **WHEN** LLM 调用抛 `requests.RequestException` / HTTP 4xx 5xx / 超时 / 任何网络层异常
 - **THEN** 系统 SHALL 不抛错给 `process_project()` 调用方
 - **AND** SHALL 将该 batch 全部 icon 改用 timestamp 键同步
 - **AND** `meta["components_fallback_to_timestamp"]` SHALL 为 `True`
