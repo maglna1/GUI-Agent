@@ -574,5 +574,81 @@ class SyncComponentsToDestTest(unittest.TestCase):
             self.assertEqual(meta["components_keys_updated"], [])
 
 
+class ProcessProjectSyncTest(unittest.TestCase):
+    """End-to-end: process_project() reads env var and triggers sync."""
+
+    def _write_project(self, project_dir):
+        """Create a minimal project with CONFIG + 2 LClick actions."""
+        (project_dir / "inputs").mkdir(parents=True)
+        # Empty mp4 is fine for this test — _get_frame_at will be mocked.
+        (project_dir / "inputs" / "demo.mp4").write_bytes(b"")
+        actions = [
+            {"action": "CONFIG", "coords": {"0": {"width": 1920, "height": 1080, "scale_factor": 1.0}}},
+            {"timestamp": 10.954, "action": "LClick at",
+             "coords": [{"x": 820, "y": 450}], "current_software": "Explorer"},
+            {"timestamp": 11.054, "action": "Wheel at",
+             "coords": [{"x": 500, "y": 500}], "current_software": "Explorer"},
+        ]
+        (project_dir / f"{project_dir.name}_processed_log.json").write_text(
+            json.dumps(actions), encoding="utf-8"
+        )
+
+    def test_env_var_unset_skips_sync_and_meta_has_synced_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            project_dir = tmp / "proj"
+            self._write_project(project_dir)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            with patch.dict(os.environ, {"GUI_AGENT_COMPONENTS_DEST": ""}, clear=False):
+                # Sanity: confirm env var is empty in this test scope
+                self.assertEqual(os.environ.get("GUI_AGENT_COMPONENTS_DEST", "").strip(), "")
+                ext = VideoScreenshotExtractor()
+                # Mock _get_frame_at to skip video decode
+                with patch.object(ext, "_get_frame_at", return_value=np.zeros((1080, 1920, 3), dtype=np.uint8)):
+                    with patch.object(ext, "_sync_components_to_dest") as mock_sync:
+                        _, _, meta = ext.process_project(str(project_dir))
+
+            mock_sync.assert_not_called()
+            self.assertEqual(meta["components_synced"], False)
+            self.assertIsNone(meta["components_dest"])
+            self.assertEqual(meta["components_keys_added"], [])
+            self.assertEqual(meta["components_keys_updated"], [])
+
+    def test_env_var_set_triggers_sync_and_meta_is_merged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            project_dir = tmp / "proj"
+            self._write_project(project_dir)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            sync_return = {
+                "components_synced": True,
+                "components_dest": str(dest),
+                "components_keys_added": ["taskbar_search"],
+                "components_keys_updated": [],
+                "components_fallback_to_timestamp": False,
+            }
+
+            with patch.dict(os.environ,
+                            {"GUI_AGENT_COMPONENTS_DEST": str(dest)}, clear=False):
+                ext = VideoScreenshotExtractor()
+                with patch.object(ext, "_get_frame_at", return_value=np.zeros((1080, 1920, 3), dtype=np.uint8)):
+                    with patch.object(ext, "_sync_components_to_dest",
+                                      return_value=sync_return) as mock_sync:
+                        _, _, meta = ext.process_project(str(project_dir))
+
+            mock_sync.assert_called_once()
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_dest"], str(dest))
+            self.assertEqual(meta["components_keys_added"], ["taskbar_search"])
+            self.assertEqual(meta["components_fallback_to_timestamp"], False)
+            # Pre-existing meta fields still present
+            self.assertIn("video_file", meta)
+            self.assertIn("saved_log_sc", meta)
+
+
 if __name__ == "__main__":
     unittest.main()

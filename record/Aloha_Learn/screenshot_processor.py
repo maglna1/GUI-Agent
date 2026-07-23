@@ -646,6 +646,21 @@ class VideoScreenshotExtractor:
             "saved_log_sc": str(out_json_sc)
         }
 
+        # Optional: sync icons to a configured harness components/ dir.
+        dest_str = os.environ.get("GUI_AGENT_COMPONENTS_DEST", "").strip()
+        if dest_str:
+            dest_path = Path(dest_str)
+            sync_meta = self._sync_components_to_dest(
+                actions, screenshots_dir, dest_path,
+            )
+            meta.update(sync_meta)
+        else:
+            meta["components_synced"] = False
+            meta["components_dest"] = None
+            meta["components_keys_added"] = []
+            meta["components_keys_updated"] = []
+            meta["components_fallback_to_timestamp"] = False
+
         return updated_actions, screenshots_dir, meta
     
 if __name__ == "__main__":
