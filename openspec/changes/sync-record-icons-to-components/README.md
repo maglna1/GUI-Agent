@@ -6,6 +6,17 @@
 
 消除 record 完成与 harness 消费之间的手工导入步骤。`process_project()` 一结束，下游 `cv2.matchTemplate` 就能立即看到新增的 icon。
 
+## 环境变量约定
+
+`GUI_AGENT_COMPONENTS_DEST` 应设为 harness 的 **app 目录**（即 `desktop/` 这一层），不是 `desktop/components/`。代码会把：
+
+- `<dest>/components.json` —— 与既有 17 条 desktop 组件同款 schema
+- `<dest>/components/<label>.png` —— icon PNG
+
+按兄弟形式落盘。`icon_file` 字段值为相对 `dest` 的 `components/<label>.png`。
+
+正确示例：`GUI_AGENT_COMPONENTS_DEST="E:/pycharm projects/GUI-Agent-Harness-Github/gui_harness/memory/apps/desktop"`
+
 ## 制品
 
 - `proposal.md` — 动机与范围
