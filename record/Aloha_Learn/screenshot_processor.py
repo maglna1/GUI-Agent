@@ -1,10 +1,20 @@
 import base64
 import os
+import shutil
 import cv2
 import json
 from pathlib import Path
 import numpy as np
 import requests
+from datetime import datetime
+
+from components_sync import (
+    IconRecord,
+    sanitize_label,
+    dedup_labels,
+    build_component_entry,
+    merge_components_json,
+)
 
 
 class ComponentsLLMError(Exception):
@@ -338,6 +348,78 @@ class VideoScreenshotExtractor:
             updated.append(ua)
         return updated
     
+    def _load_components_json(self, dest):
+        """Read dest/components.json. Missing or corrupt -> {} (with warning)."""
+        json_path = dest / "components.json"
+        if not json_path.exists():
+            return {}
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                print(f"[sync] WARNING: {json_path} is not a JSON object; treating as empty")
+                return {}
+            return data
+        except json.JSONDecodeError as e:
+            print(f"[sync] WARNING: {json_path} is corrupt ({e}); treating as empty")
+            return {}
+
+    def _apply_components_updates(self, dest, existing, additions, src_icons_dir, now_str):
+        """Copy PNGs and upsert dest/components.json.
+
+        Args:
+            dest: target components dir (we'll create dest/components/ inside).
+            existing: dict loaded from dest/components.json (may be empty).
+            additions: dict mapping safe_label -> (safe_label, source_filename).
+                The first element duplicates the key for convenience; the
+                source_filename lives in src_icons_dir.
+            src_icons_dir: directory containing the source PNGs
+                (typically <project>/screenshots/icons/).
+            now_str: timestamp string ("YYYY-MM-DD HH:MM:SS") for last_seen and
+                new learned_at.
+
+        Returns:
+            (keys_added, keys_updated) per merge_components_json semantics.
+        """
+        components_dir = dest / "components"
+        try:
+            components_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise RuntimeError(f"Could not create {components_dir}: {e}") from e
+
+        # Build full entries up-front, then copy PNGs, then upsert+write.
+        entry_additions = {}
+        for safe_label, source_filename in additions.values():
+            src = src_icons_dir / source_filename
+            entry = build_component_entry(
+                label=safe_label,
+                icon_file=f"components/{safe_label}.png",
+                learned_at=now_str,
+                last_seen=now_str,
+                seen_count=1,
+            )
+            entry_additions[safe_label] = (entry, source_filename)
+            dst = components_dir / f"{safe_label}.png"
+            try:
+                shutil.copyfile(src, dst)
+            except OSError as e:
+                raise RuntimeError(
+                    f"Could not copy {src} -> {dst}: {e}"
+                ) from e
+
+        merged, keys_added, keys_updated = merge_components_json(
+            existing, entry_additions, now_str,
+        )
+
+        json_path = dest / "components.json"
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(merged, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            raise RuntimeError(f"Could not write {json_path}: {e}") from e
+
+        return keys_added, keys_updated
+
     def _crop_with_black_padding(self, frame, x, y, crop_size=256):
         if x is None or y is None:
             return frame

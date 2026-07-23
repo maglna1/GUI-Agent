@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -348,6 +349,125 @@ class RequestComponentLabelsTest(unittest.TestCase):
                     ext = VideoScreenshotExtractor()
                     with self.assertRaises(ComponentsLLMError):
                         ext._request_component_labels(self._records(), screenshots_dir)
+
+
+class LoadComponentsJsonTest(unittest.TestCase):
+    def test_returns_empty_when_file_missing(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ext._load_components_json(Path(tmp)), {})
+
+    def test_returns_empty_when_file_corrupt(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "components.json").write_text("{not json")
+            self.assertEqual(ext._load_components_json(Path(tmp)), {})
+
+    def test_returns_parsed_dict_when_valid(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "components.json").write_text('{"foo": {"label": "foo"}}')
+            self.assertEqual(ext._load_components_json(Path(tmp)), {"foo": {"label": "foo"}})
+
+
+class ApplyComponentsUpdatesTest(unittest.TestCase):
+    def _png_bytes(self):
+        ok, buf = cv2.imencode(".png", np.zeros((4, 4, 3), dtype=np.uint8))
+        self.assertTrue(ok)
+        return bytes(buf)
+
+    def test_copies_pngs_and_writes_json(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src_icons = tmp / "src_icons"
+            src_icons.mkdir()
+            (src_icons / "icon_a.png").write_bytes(self._png_bytes())
+            (src_icons / "icon_b.png").write_bytes(self._png_bytes())
+            dest = tmp / "dest"
+            dest.mkdir()
+            existing = ext._load_components_json(dest)
+
+            # additions: safe_label -> source_filename
+            additions = {
+                "foo": ("foo", "icon_a.png"),
+                "bar": ("bar", "icon_b.png"),
+            }
+            now_str = "2026-07-23 12:00:00"
+            keys_added, keys_updated = ext._apply_components_updates(
+                dest, existing, additions, src_icons, now_str,
+            )
+
+            self.assertEqual(keys_added, ["foo", "bar"])
+            self.assertEqual(keys_updated, [])
+
+            # PNGs were copied with the right names
+            self.assertTrue((dest / "components" / "foo.png").exists())
+            self.assertTrue((dest / "components" / "bar.png").exists())
+
+            # components.json contains both entries with expected fields
+            data = json.loads((dest / "components.json").read_text(encoding="utf-8"))
+            self.assertEqual(set(data.keys()), {"foo", "bar"})
+            self.assertEqual(data["foo"]["type"], "icon")
+            self.assertEqual(data["foo"]["source"], "learn_batch")
+            self.assertEqual(data["foo"]["icon_file"], "components/foo.png")
+            self.assertEqual(data["foo"]["label"], "foo")
+            self.assertEqual(data["foo"]["learned_at"], now_str)
+            self.assertEqual(data["foo"]["last_seen"], now_str)
+            self.assertEqual(data["foo"]["seen_count"], 1)
+            self.assertEqual(data["foo"]["consecutive_misses"], 0)
+            self.assertTrue(data["foo"]["base_memory"])
+
+    def test_upsert_preserves_learned_at_and_increments_seen_count(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src_icons = tmp / "src_icons"
+            src_icons.mkdir()
+            (src_icons / "icon_a.png").write_bytes(self._png_bytes())
+            dest = tmp / "dest"
+            dest.mkdir()
+            (dest / "components.json").write_text(json.dumps({
+                "foo": {
+                    "type": "icon",
+                    "source": "learn_batch",
+                    "icon_file": "components/foo.png",
+                    "label": "foo",
+                    "learned_at": "2026-07-23 10:00:00",
+                    "last_seen": "2026-07-23 10:00:00",
+                    "seen_count": 4,
+                    "consecutive_misses": 0,
+                    "base_memory": True,
+                },
+            }))
+            existing = ext._load_components_json(dest)
+            additions = {"foo": ("foo", "icon_a.png")}
+            keys_added, keys_updated = ext._apply_components_updates(
+                dest, existing, additions, src_icons, "2026-07-23 12:00:00",
+            )
+            self.assertEqual(keys_added, [])
+            self.assertEqual(keys_updated, ["foo"])
+            data = json.loads((dest / "components.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["foo"]["learned_at"], "2026-07-23 10:00:00")  # preserved
+            self.assertEqual(data["foo"]["last_seen"], "2026-07-23 12:00:00")  # refreshed
+            self.assertEqual(data["foo"]["seen_count"], 5)
+
+    def test_runtimeerror_on_unwritable_dest(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src_icons = tmp / "src_icons"
+            src_icons.mkdir()
+            (src_icons / "icon_a.png").write_bytes(self._png_bytes())
+            dest = tmp / "dest_does_not_exist_and_cannot_be_created"
+            # Force shutil.copyfile to fail by mocking it
+            with patch("screenshot_processor.shutil.copyfile",
+                       side_effect=OSError("permission denied")):
+                with self.assertRaises(RuntimeError):
+                    ext._apply_components_updates(
+                        dest, {}, {"foo": ("foo", "icon_a.png")}, src_icons,
+                        "2026-07-23 12:00:00",
+                    )
 
 
 if __name__ == "__main__":
