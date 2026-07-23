@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: 默认点击产物附带原始 50×50 PNG
+### Requirement: 默认点击产物附带原始 30×30 PNG
 
 在 `VideoScreenshotExtractor.process_actions()` 的默认点击处理分支中，系统 SHALL 在围绕点击坐标完成 256×256 黑边填充裁剪之后、绘制半透明白边与红色 X 标记之前，再以同样的点击坐标为中心生成一张 `icon_crop_size` 大小的原始裁剪并以 PNG 格式落盘。
 
@@ -26,11 +26,11 @@
 
 ### Requirement: icon_crop_size 可配置且向后兼容
 
-`VideoScreenshotExtractor.__init__` SHALL 接受新增的 `icon_crop_size` 关键字参数，默认值为 `50`；既有调用形式 SHALL 继续合法而不抛错。
+`VideoScreenshotExtractor.__init__` SHALL 接受新增的 `icon_crop_size` 关键字参数，默认值为 `30`；既有调用形式 SHALL 继续合法而不抛错。
 
 #### Scenario: 默认实例化保持兼容
 - **WHEN** 调用方执行 `VideoScreenshotExtractor()` 不传任何参数
-- **THEN** 系统 SHALL 使用 `icon_crop_size=50` 默认值
+- **THEN** 系统 SHALL 使用 `icon_crop_size=30` 默认值
 - **AND** SHALL NOT 抛出 `TypeError`
 
 #### Scenario: 自定义 icon 尺寸
@@ -41,7 +41,7 @@
 #### Scenario: 已有的位置参数调用保持兼容
 - **WHEN** 调用方以位置参数形式传入前 6 个参数（例如 `VideoScreenshotExtractor(1920, 1080, 95, 256, 30, 6)`）
 - **THEN** 系统 SHALL NOT 抛出 `TypeError`
-- **AND** `icon_crop_size` SHALL 取默认值 `50`
+- **AND** `icon_crop_size` SHALL 取默认值 `30`
 
 ### Requirement: icon 落盘失败应中止流程
 

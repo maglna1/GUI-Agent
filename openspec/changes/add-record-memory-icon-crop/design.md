@@ -7,13 +7,13 @@
 3. 与原 crop 50% 混合后保存为 `{base}.crop.jpg`；
 4. 同时保存全帧 `{base}.jpg`。
 
-用户希望**新增**一张 50×50 的原始裁剪（无任何标注）保存到 `screenshots/icons/`，文件名以 `record_memory_icon_{base}_crop.png` 形式与既有产物同源，便于下游记忆层直接引用。
+用户希望**新增**一张 30×30 的原始裁剪（无任何标注）保存到 `screenshots/icons/`，文件名以 `record_memory_icon_{base}_crop.png` 形式与既有产物同源，便于下游记忆层直接引用。
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- 在不破坏既有 256×256 + 红 X 行为的前提下，为每个默认点击额外落盘一张 50×50 原始 PNG。
+- 在不破坏既有 256×256 + 红 X 行为的前提下，为每个默认点击额外落盘一张 30×30 原始 PNG。
 - 文件命名与既有产物同源（共享 `base = "{timestamp:.3f}s"`）。
 - 落盘位置独立（`screenshots/icons/`），便于命名空间隔离。
 - `__init__` 新增参数对既有调用完全向后兼容。
@@ -27,7 +27,7 @@
 
 ## Decisions
 
-### 决策 1：在 `__init__` 末尾追加 `icon_crop_size=50`
+### 决策 1：在 `__init__` 末尾追加 `icon_crop_size=30`
 
 ```python
 def __init__(
@@ -38,7 +38,7 @@ def __init__(
     crop_size=256,
     x_size=30,
     x_thick=6,
-    icon_crop_size=50,
+    icon_crop_size=30,
 ):
     ...
     self.icon_crop_size = icon_crop_size
@@ -88,10 +88,10 @@ if not icon_ok:
 
 **理由：**
 
-- `draw_frame` 是 `frame.copy()` 的纯净副本（X 尚未绘制），从它裁出 50×50 即可保证 PNG 不带任何标注。
-- 直接复用 `_crop_with_black_padding` 而不是把 256×256 crop 再 resize 到 50×50：
+- `draw_frame` 是 `frame.copy()` 的纯净副本（X 尚未绘制），从它裁出 30×30 即可保证 PNG 不带任何标注。
+- 直接复用 `_crop_with_black_padding` 而不是把 256×256 crop 再 resize 到 30×30：
   - resize 会经过 256×256 这一中间尺寸，引入额外的插值模糊。
-  - resize 不会改变中心像素的"邻域定义"——50×50 crop 应当以原始帧的点击坐标为中心的 25 像素邻域，而非 256×256 crop 中心附近已经过黑边填充的 25 像素邻域。
+  - resize 不会改变中心像素的"邻域定义"——30×30 crop 应当以原始帧的点击坐标为中心的 15 像素邻域，而非 256×256 crop 中心附近已经过黑边填充的 25 像素邻域。
 - 落盘失败立即抛错，与既有 `full_ok` / `crop_ok` 失败语义一致。
 - `base` 在循环顶部（第 133 行）已经计算好，新代码可以直接复用。
 
@@ -109,9 +109,9 @@ if not icon_ok:
 
 ## Risks / Trade-offs
 
-- **磁盘增长**：50×50 PNG 通常 1–3 KB；1000 次点击 ≈ 1–3 MB，可接受。
+- **磁盘增长**：30×30 PNG 通常 < 1 KB；1000 次点击 < 1 MB，可接受。
 - **I/O 开销**：每次点击多一次 `cv2.imwrite`，与既有两次写入同量级，无显著性能差异。
-- **重复裁剪**：默认分支对同一 `(cx_raw, cy_raw)` 调用两次 `_crop_with_black_padding`，一次 256、一次 50。可接受的代价是代码更直白；若未来有性能诉求，可改为单次裁 256 后 resize 50，但会引入前述插值差异。
+- **重复裁剪**：默认分支对同一 `(cx_raw, cy_raw)` 调用两次 `_crop_with_black_padding`，一次 256、一次 30。可接受的代价是代码更直白；若未来有性能诉求，可改为单次裁 256 后 resize 30，但会引入前述插值差异。
 - **错误传播**：若 `screenshots/icons/` 不可写，会抛 `RuntimeError` 中止整个 `process_actions()`。这与既有 `full_ok` / `crop_ok` 失败一致；下游若希望"icon 失败不影响其余产物"，需要在调用层包 try/except（当前不变更）。
 
 ## Migration Plan

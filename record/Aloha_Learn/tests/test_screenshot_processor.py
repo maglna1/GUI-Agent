@@ -2,20 +2,22 @@ import os
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from screenshot_processor import VideoScreenshotExtractor
+from screenshot_processor import VideoScreenshotExtractor, ComponentsLLMError
+from components_sync import IconRecord
 
 
 class IconCropSizeConstructorTest(unittest.TestCase):
     def test_zero_arg_constructor_uses_default_icon_crop_size(self):
         ext = VideoScreenshotExtractor()
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
 
     def test_explicit_icon_crop_size_kwarg_is_stored(self):
         ext = VideoScreenshotExtractor(icon_crop_size=80)
@@ -24,7 +26,7 @@ class IconCropSizeConstructorTest(unittest.TestCase):
     def test_existing_positional_args_still_work(self):
         # All 6 pre-existing positional params passed; icon_crop_size must default.
         ext = VideoScreenshotExtractor(1920, 1080, 95, 256, 30, 6)
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
         self.assertEqual(ext.target_width, 1920)
         self.assertEqual(ext.crop_size, 256)
 
@@ -32,7 +34,7 @@ class IconCropSizeConstructorTest(unittest.TestCase):
         ext = VideoScreenshotExtractor(target_width=1280, crop_size=200)
         self.assertEqual(ext.target_width, 1280)
         self.assertEqual(ext.crop_size, 200)
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
 
 
 class SavePngHelperTest(unittest.TestCase):
@@ -113,11 +115,11 @@ class DefaultClickIconSaveTest(unittest.TestCase):
             icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
             self.assertTrue(icon_path.exists(), f"missing icon at {icon_path}")
 
-            # 2. 图标为合法的 50x50 PNG（无损、尺寸准确）
+            # 2. 图标为合法的 icon_crop_size×icon_crop_size PNG（无损、尺寸准确）
             icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
             self.assertIsNotNone(icon)
-            self.assertEqual(icon.shape[0], 50)
-            self.assertEqual(icon.shape[1], 50)
+            self.assertEqual(icon.shape[0], ext.icon_crop_size)
+            self.assertEqual(icon.shape[1], ext.icon_crop_size)
 
             # 2.5. 像素级精确断言：直接对图案化帧调用 _crop_with_black_padding
             # 得到期望图标。这样可以一次性验证：(a) 图标源自原始帧
@@ -160,8 +162,8 @@ class DefaultClickIconSaveTest(unittest.TestCase):
             icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
             icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
 
-            # 形状必须严格为 50x50x3。
-            self.assertEqual(icon.shape, (50, 50, 3))
+            # 形状必须严格为 icon_crop_size×icon_crop_size×3。
+            self.assertEqual(icon.shape, (ext.icon_crop_size, ext.icon_crop_size, 3))
 
             # 直接计算期望裁剪结果：因为 (2, 3) 紧贴角点，顶部和左侧应带有黑色 padding。
             expected_icon = ext._crop_with_black_padding(
@@ -185,13 +187,14 @@ class DefaultClickIconSaveTest(unittest.TestCase):
 
             # 帧内区域（例如图标中心）应为非零图案化像素 —— 确认不全黑，
             # 且采样的内部像素与图案化帧在该位置的取值一致。
-            center = icon[25, 25]
+            half = ext.icon_crop_size // 2
+            center = icon[half, half]
             self.assertFalse(
                 np.array_equal(center, np.zeros(3, dtype=np.uint8)),
                 "center of icon should be non-zero (in-frame patterned source)",
             )
-            # 点击 (2, 3) 且 icon_crop_size=50，half=25，因此图标中心对应帧像素 (2, 3)，
-            # 按构造规则为 (b=2, g=3, r=5)。
+            # 点击 (2, 3) 且 icon_crop_size=ext.icon_crop_size，half=ext.icon_crop_size // 2，
+            # 因此图标中心对应帧像素 (2, 3)，按构造规则为 (b=2, g=3, r=5)。
             self.assertTrue(
                 np.array_equal(center, np.array([2, 3, 5], dtype=np.uint8)),
                 f"icon center must equal frame[3,2]=(2,3,5) BGR; got {center.tolist()}",
@@ -237,6 +240,414 @@ class DefaultClickIconSaveTest(unittest.TestCase):
                 icons_dir.exists() and any(icons_dir.glob("record_memory_icon_*.png")),
                 "scroll/wheel actions must not produce icon PNGs",
             )
+
+
+class RequestComponentLabelsTest(unittest.TestCase):
+    FILENAME = "record_memory_icon_10.854s_crop.png"
+
+    def _records(self):
+        return [
+            IconRecord(
+                filename=self.FILENAME,
+                action="LClick at",
+                coords=(820, 450),
+                current_software="Explorer",
+                base="10.854s",
+            ),
+        ]
+
+    def _setup_icon(self, screenshots_dir):
+        """Create one valid PNG at <screenshots_dir>/icons/<FILENAME> so the
+        production code's open() call doesn't raise FileNotFoundError."""
+        (screenshots_dir / "icons").mkdir(parents=True, exist_ok=True)
+        ok, buf = cv2.imencode(".png", np.zeros((4, 4, 3), dtype=np.uint8))
+        self.assertTrue(ok)
+        (screenshots_dir / "icons" / self.FILENAME).write_bytes(bytes(buf))
+
+    def _mock_response(self, content):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={
+            "choices": [{"message": {"content": content}}]
+        })
+        return resp
+
+    def test_returns_label_map_on_success(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+            "OPENAI_VERIFY_SSL": "true",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response(
+                    f'{{"{self.FILENAME}": "taskbar_search"}}'
+                )) as p:
+                    ext = VideoScreenshotExtractor()
+                    labels = ext._request_component_labels(self._records(), screenshots_dir)
+
+        self.assertEqual(labels, {self.FILENAME: "taskbar_search"})
+        called_args, called_kwargs = p.call_args
+        self.assertIn("/chat/completions", called_args[0])
+        self.assertEqual(called_kwargs["json"]["model"], "gpt-4o")
+        self.assertEqual(called_kwargs["timeout"], 120)
+        msgs = called_kwargs["json"]["messages"]
+        self.assertEqual(len(msgs), 2)
+        # The user message carries the icon metadata + inline images.
+        content = msgs[1]["content"]
+        self.assertTrue(any(
+            c.get("type") == "text" and "taskbar_search" not in c.get("text", "")
+            for c in content
+        ), "content must include text metadata (without the LLM-provided label)")
+        self.assertTrue(any(c.get("type") == "image_url" for c in content))
+
+    def test_raises_components_llm_error_on_http_failure(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock(side_effect=Exception("HTTP 500"))
+                with patch("requests.post", return_value=resp):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
+
+    def test_raises_components_llm_error_on_invalid_json(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response("not json")):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
+
+    def test_raises_components_llm_error_when_missing_input_filenames(self):
+        # LLM returns labels for a different file; missing files = error
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response(
+                    '{"unrelated.png": "foo"}'
+                )):
+                    ext = VideoScreenshotExtractor()
+                    with self.assertRaises(ComponentsLLMError):
+                        ext._request_component_labels(self._records(), screenshots_dir)
+
+
+class LoadComponentsJsonTest(unittest.TestCase):
+    def test_returns_empty_when_file_missing(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ext._load_components_json(Path(tmp)), {})
+
+    def test_returns_empty_when_file_corrupt(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "components.json").write_text("{not json")
+            self.assertEqual(ext._load_components_json(Path(tmp)), {})
+
+    def test_returns_parsed_dict_when_valid(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "components.json").write_text('{"foo": {"label": "foo"}}')
+            self.assertEqual(ext._load_components_json(Path(tmp)), {"foo": {"label": "foo"}})
+
+
+class ApplyComponentsUpdatesTest(unittest.TestCase):
+    def _png_bytes(self):
+        ok, buf = cv2.imencode(".png", np.zeros((4, 4, 3), dtype=np.uint8))
+        self.assertTrue(ok)
+        return bytes(buf)
+
+    def test_copies_pngs_and_writes_json(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src_icons = tmp / "src_icons"
+            src_icons.mkdir()
+            (src_icons / "icon_a.png").write_bytes(self._png_bytes())
+            (src_icons / "icon_b.png").write_bytes(self._png_bytes())
+            dest = tmp / "dest"
+            dest.mkdir()
+            existing = ext._load_components_json(dest)
+
+            # additions: safe_label -> source_filename
+            additions = {
+                "foo": ("foo", "icon_a.png"),
+                "bar": ("bar", "icon_b.png"),
+            }
+            now_str = "2026-07-23 12:00:00"
+            keys_added, keys_updated = ext._apply_components_updates(
+                dest, existing, additions, src_icons, now_str,
+            )
+
+            self.assertEqual(keys_added, ["foo", "bar"])
+            self.assertEqual(keys_updated, [])
+
+            # PNGs were copied with the right names
+            self.assertTrue((dest / "components" / "foo.png").exists())
+            self.assertTrue((dest / "components" / "bar.png").exists())
+
+            # components.json contains both entries with expected fields
+            data = json.loads((dest / "components.json").read_text(encoding="utf-8"))
+            self.assertEqual(set(data.keys()), {"foo", "bar"})
+            self.assertEqual(data["foo"]["type"], "icon")
+            self.assertEqual(data["foo"]["source"], "learn_batch")
+            self.assertEqual(data["foo"]["icon_file"], "components/foo.png")
+            self.assertEqual(data["foo"]["label"], "foo")
+            self.assertEqual(data["foo"]["learned_at"], now_str)
+            self.assertEqual(data["foo"]["last_seen"], now_str)
+            self.assertEqual(data["foo"]["seen_count"], 1)
+            self.assertEqual(data["foo"]["consecutive_misses"], 0)
+            self.assertTrue(data["foo"]["base_memory"])
+
+    def test_upsert_preserves_learned_at_and_increments_seen_count(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src_icons = tmp / "src_icons"
+            src_icons.mkdir()
+            (src_icons / "icon_a.png").write_bytes(self._png_bytes())
+            dest = tmp / "dest"
+            dest.mkdir()
+            (dest / "components.json").write_text(json.dumps({
+                "foo": {
+                    "type": "icon",
+                    "source": "learn_batch",
+                    "icon_file": "components/foo.png",
+                    "label": "foo",
+                    "learned_at": "2026-07-23 10:00:00",
+                    "last_seen": "2026-07-23 10:00:00",
+                    "seen_count": 4,
+                    "consecutive_misses": 0,
+                    "base_memory": True,
+                },
+            }))
+            existing = ext._load_components_json(dest)
+            additions = {"foo": ("foo", "icon_a.png")}
+            keys_added, keys_updated = ext._apply_components_updates(
+                dest, existing, additions, src_icons, "2026-07-23 12:00:00",
+            )
+            self.assertEqual(keys_added, [])
+            self.assertEqual(keys_updated, ["foo"])
+            data = json.loads((dest / "components.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["foo"]["learned_at"], "2026-07-23 10:00:00")  # preserved
+            self.assertEqual(data["foo"]["last_seen"], "2026-07-23 12:00:00")  # refreshed
+            self.assertEqual(data["foo"]["seen_count"], 5)
+
+    def test_runtimeerror_on_unwritable_dest(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            src_icons = tmp / "src_icons"
+            src_icons.mkdir()
+            (src_icons / "icon_a.png").write_bytes(self._png_bytes())
+            dest = tmp / "dest_does_not_exist_and_cannot_be_created"
+            # Force shutil.copyfile to fail by mocking it
+            with patch("screenshot_processor.shutil.copyfile",
+                       side_effect=OSError("permission denied")):
+                with self.assertRaises(RuntimeError):
+                    ext._apply_components_updates(
+                        dest, {}, {"foo": ("foo", "icon_a.png")}, src_icons,
+                        "2026-07-23 12:00:00",
+                    )
+
+
+class SyncComponentsToDestTest(unittest.TestCase):
+    def _png_bytes(self):
+        ok, buf = cv2.imencode(".png", np.zeros((4, 4, 3), dtype=np.uint8))
+        self.assertTrue(ok)
+        return bytes(buf)
+
+    def _setup(self, root):
+        """Create a screenshots_dir with one icon and matching action."""
+        screenshots_dir = root / "screenshots"
+        icons = screenshots_dir / "icons"
+        icons.mkdir(parents=True)
+        (icons / "record_memory_icon_10.854s_crop.png").write_bytes(self._png_bytes())
+        action = {
+            "timestamp": 10.954,
+            "action": "LClick at",
+            "coords": [{"x": 820, "y": 450}],
+            "current_software": "Explorer",
+            "screenshot_full": "screenshots/10.854s.jpg",
+            "screenshot_crop": "screenshots/10.854s.crop.jpg",
+        }
+        return screenshots_dir, [action]
+
+    def test_returns_meta_with_keys_added_on_success(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            screenshots_dir, actions = self._setup(tmp)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            with patch.object(
+                ext, "_request_component_labels",
+                return_value={"record_memory_icon_10.854s_crop.png": "Taskbar Search"},
+            ):
+                meta = ext._sync_components_to_dest(actions, screenshots_dir, dest)
+
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_dest"], str(dest))
+            self.assertEqual(meta["components_keys_added"], ["taskbar_search"])
+            self.assertEqual(meta["components_keys_updated"], [])
+            self.assertEqual(meta["components_fallback_to_timestamp"], False)
+
+            # dest/components/taskbar_search.png exists, components.json contains the entry
+            self.assertTrue((dest / "components" / "taskbar_search.png").exists())
+            data = json.loads((dest / "components.json").read_text(encoding="utf-8"))
+            self.assertIn("taskbar_search", data)
+            self.assertEqual(data["taskbar_search"]["label"], "taskbar_search")
+            self.assertEqual(data["taskbar_search"]["icon_file"], "components/taskbar_search.png")
+
+    def test_falls_back_to_timestamp_keys_when_llm_raises(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            screenshots_dir, actions = self._setup(tmp)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            with patch.object(
+                ext, "_request_component_labels",
+                side_effect=ComponentsLLMError("network fail"),
+            ):
+                meta = ext._sync_components_to_dest(actions, screenshots_dir, dest)
+
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_fallback_to_timestamp"], True)
+            self.assertEqual(meta["components_keys_added"], ["record_memory_icon_10_854s_crop"])
+            # PNG was copied under the timestamp-key name
+            self.assertTrue(
+                (dest / "components" / "record_memory_icon_10_854s_crop.png").exists()
+            )
+
+    def test_skips_non_default_click_actions(self):
+        ext = VideoScreenshotExtractor()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            screenshots_dir = tmp / "screenshots"
+            icons = screenshots_dir / "icons"
+            icons.mkdir(parents=True)
+            # No icon files at all -> sync has nothing to do
+            actions = [
+                {"timestamp": 10.954, "action": "LClick at",
+                 "coords": [{"x": 1, "y": 1}], "current_software": "X"},
+                {"timestamp": 11.0, "action": "Wheel at",
+                 "coords": [{"x": 1, "y": 1}], "current_software": "X"},
+                {"timestamp": 12.0, "action": "DragStart at",
+                 "coords": [{"x": 1, "y": 1}], "current_software": "X",
+                 "path": [{"x": 1, "y": 1}, {"x": 2, "y": 2}]},
+                {"timestamp": 13.0, "action": "CONFIG", "coords": {}},
+                {"timestamp": 14.0, "action": "Active Window: Foo",
+                 "coords": [{"x": 0, "y": 0}]},
+            ]
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            # LLM should never be called because there are no icons.
+            with patch.object(ext, "_request_component_labels") as mock_llm:
+                meta = ext._sync_components_to_dest(actions, screenshots_dir, dest)
+
+            mock_llm.assert_not_called()
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_keys_added"], [])
+            self.assertEqual(meta["components_keys_updated"], [])
+
+
+class ProcessProjectSyncTest(unittest.TestCase):
+    """End-to-end: process_project() reads env var and triggers sync."""
+
+    def _write_project(self, project_dir):
+        """Create a minimal project with CONFIG + 2 LClick actions."""
+        (project_dir / "inputs").mkdir(parents=True)
+        # Empty mp4 is fine for this test — _get_frame_at will be mocked.
+        (project_dir / "inputs" / "demo.mp4").write_bytes(b"")
+        actions = [
+            {"action": "CONFIG", "coords": {"0": {"width": 1920, "height": 1080, "scale_factor": 1.0}}},
+            {"timestamp": 10.954, "action": "LClick at",
+             "coords": [{"x": 820, "y": 450}], "current_software": "Explorer"},
+            {"timestamp": 11.054, "action": "Wheel at",
+             "coords": [{"x": 500, "y": 500}], "current_software": "Explorer"},
+        ]
+        (project_dir / f"{project_dir.name}_processed_log.json").write_text(
+            json.dumps(actions), encoding="utf-8"
+        )
+
+    def test_env_var_unset_skips_sync_and_meta_has_synced_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            project_dir = tmp / "proj"
+            self._write_project(project_dir)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            with patch.dict(os.environ, {"GUI_AGENT_COMPONENTS_DEST": ""}, clear=False):
+                # Sanity: confirm env var is empty in this test scope
+                self.assertEqual(os.environ.get("GUI_AGENT_COMPONENTS_DEST", "").strip(), "")
+                ext = VideoScreenshotExtractor()
+                # Mock _get_frame_at to skip video decode
+                with patch.object(ext, "_get_frame_at", return_value=np.zeros((1080, 1920, 3), dtype=np.uint8)):
+                    with patch.object(ext, "_sync_components_to_dest") as mock_sync:
+                        _, _, meta = ext.process_project(str(project_dir))
+
+            mock_sync.assert_not_called()
+            self.assertEqual(meta["components_synced"], False)
+            self.assertIsNone(meta["components_dest"])
+            self.assertEqual(meta["components_keys_added"], [])
+            self.assertEqual(meta["components_keys_updated"], [])
+
+    def test_env_var_set_triggers_sync_and_meta_is_merged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            project_dir = tmp / "proj"
+            self._write_project(project_dir)
+            dest = tmp / "dest"
+            dest.mkdir()
+
+            sync_return = {
+                "components_synced": True,
+                "components_dest": str(dest),
+                "components_keys_added": ["taskbar_search"],
+                "components_keys_updated": [],
+                "components_fallback_to_timestamp": False,
+            }
+
+            with patch.dict(os.environ,
+                            {"GUI_AGENT_COMPONENTS_DEST": str(dest)}, clear=False):
+                ext = VideoScreenshotExtractor()
+                with patch.object(ext, "_get_frame_at", return_value=np.zeros((1080, 1920, 3), dtype=np.uint8)):
+                    with patch.object(ext, "_sync_components_to_dest",
+                                      return_value=sync_return) as mock_sync:
+                        _, _, meta = ext.process_project(str(project_dir))
+
+            mock_sync.assert_called_once()
+            self.assertEqual(meta["components_synced"], True)
+            self.assertEqual(meta["components_dest"], str(dest))
+            self.assertEqual(meta["components_keys_added"], ["taskbar_search"])
+            self.assertEqual(meta["components_fallback_to_timestamp"], False)
+            # Pre-existing meta fields still present
+            self.assertIn("video_file", meta)
+            self.assertIn("saved_log_sc", meta)
 
 
 if __name__ == "__main__":

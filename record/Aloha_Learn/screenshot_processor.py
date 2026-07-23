@@ -1,14 +1,34 @@
+import base64
 import os
+import shutil
 import cv2
 import json
 from pathlib import Path
 import numpy as np
+import requests
+from datetime import datetime
+
+from components_sync import (
+    IconRecord,
+    sanitize_label,
+    dedup_labels,
+    build_component_entry,
+    merge_components_json,
+)
+
+
+class ComponentsLLMError(Exception):
+    """Raised when the components-naming LLM call fails for any reason.
+
+    The orchestrator catches this and falls back to timestamp-keyed labels so
+    process_project() keeps running.
+    """
 
 
 class VideoScreenshotExtractor:
     """Extract full + crop screenshots per action and scale coordinates to a target resolution."""
 
-    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6, icon_crop_size=50):
+    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6, icon_crop_size=30):
         self.target_width = target_width
         self.target_height = target_height
         self.jpeg_quality = jpeg_quality
@@ -63,6 +83,100 @@ class VideoScreenshotExtractor:
     def _save_png(self, path, img):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return cv2.imwrite(path, img)
+
+    def _request_component_labels(self, records, screenshots_dir):
+        """Single batched multimodal call to the configured OpenAI-compatible LLM.
+
+        Builds a system prompt instructing the model to assign snake_case
+        content labels to each click icon, sends all icons inline as base64
+        PNGs plus per-icon metadata, and parses the JSON-object response.
+
+        screenshots_dir is a pathlib.Path pointing at the project's screenshots/
+        directory. Icons are read from <screenshots_dir>/icons/<record.filename>.
+
+        Raises ComponentsLLMError on any failure (HTTP, JSON parse, missing
+        keys, unknown keys, missing API key/model, empty result).
+        """
+        api_key = (
+            os.environ.get("OPENAI_API_KEY", "")
+            or os.environ.get("MIDSCENE_MODEL_API_KEY", "")
+        )
+        if not api_key:
+            raise ComponentsLLMError("OPENAI_API_KEY missing")
+
+        base_url = (
+            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        )
+        model = os.environ.get("OPENAI_MODEL", "")
+        if not model:
+            raise ComponentsLLMError("OPENAI_MODEL missing")
+
+        verify_ssl = os.environ.get("OPENAI_VERIFY_SSL", "true").lower() not in ("0", "false", "no")
+
+        system_prompt = (
+            "You label desktop UI click crops. For each input icon, return a "
+            "snake_case content label (lowercase letters, digits, underscores "
+            "only; max 30 chars) describing what UI element the click targets. "
+            "Respond with a JSON object mapping each input filename to its "
+            "label. Do not add commentary or wrap in markdown."
+        )
+
+        filenames = [r.filename for r in records]
+        content = [{"type": "text", "text": "Icon metadata follows."}]
+        for r in records:
+            icon_path = screenshots_dir / "icons" / r.filename
+            with open(icon_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+            content.append({
+                "type": "text",
+                "text": (
+                    f"{r.filename} | action={r.action} | "
+                    f"coords=({r.coords[0]},{r.coords[1]}) | "
+                    f"software={r.current_software} | timestamp={r.base}"
+                ),
+            })
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
+            })
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content},
+            ],
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"},
+        }
+
+        url = f"{base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            r = requests.post(url, headers=headers, json=payload,
+                              timeout=120, verify=verify_ssl)
+            r.raise_for_status()
+            body = r.json()
+            content_text = body["choices"][0]["message"]["content"]
+            parsed = json.loads(content_text)
+        except Exception as e:
+            raise ComponentsLLMError(f"LLM call/parse failed: {e}") from e
+
+        if not isinstance(parsed, dict):
+            raise ComponentsLLMError(f"LLM response is not a JSON object: {type(parsed).__name__}")
+
+        missing = [fn for fn in filenames if fn not in parsed]
+        if missing:
+            raise ComponentsLLMError(f"LLM response missing filenames: {missing}")
+        unknown = [k for k in parsed.keys() if k not in filenames]
+        if unknown:
+            raise ComponentsLLMError(f"LLM response contains unknown filenames: {unknown}")
+
+        return {fn: str(parsed[fn]) for fn in filenames}
 
     def _safe_crop(self, frame, x, y, crop_size=256):
         if x is None or y is None:
@@ -234,6 +348,184 @@ class VideoScreenshotExtractor:
             updated.append(ua)
         return updated
     
+    def _collect_icon_records(self, actions, screenshots_dir):
+        """Walk actions + screenshots_dir/icons/ to build IconRecord list.
+
+        Only default-click branches produce icons in this repo's flow
+        (see process_actions at line ~189-205). We match each icon file
+        to the action whose base (timestamp - 0.1) corresponds to its filename.
+        """
+        icon_dir = screenshots_dir / "icons"
+        if not icon_dir.exists():
+            return []
+
+        # Map base -> action for O(1) lookup
+        base_to_action = {}
+        for a in actions:
+            ts = abs(a.get("timestamp", 0) - 0.1)
+            base = f"{ts:.3f}s"
+            base_to_action[base] = a
+
+        records = []
+        for icon_path in sorted(icon_dir.glob("record_memory_icon_*_crop.png")):
+            filename = icon_path.name
+            # filename = "record_memory_icon_<base>_crop.png"; strip prefix/suffix
+            base = filename[len("record_memory_icon_"):-len("_crop.png")]
+            if base not in base_to_action:
+                continue
+            a = base_to_action[base]
+            coords_list = a.get("coords", [])
+            if not coords_list or not isinstance(coords_list, list):
+                continue
+            coords = (int(coords_list[0]["x"]), int(coords_list[0]["y"]))
+            records.append(IconRecord(
+                filename=filename,
+                action=str(a.get("action", "")),
+                coords=coords,
+                current_software=str(a.get("current_software", "")),
+                base=base,
+            ))
+        return records
+
+    def _sync_components_to_dest(self, actions, screenshots_dir, dest):
+        """End-to-end sync orchestration; returns the meta-delta dict."""
+        records = self._collect_icon_records(actions, screenshots_dir)
+
+        if not records:
+            # Nothing to sync but the dest may still need to be touched
+            # (e.g. ensure components.json exists). We keep meta consistent.
+            return {
+                "components_synced": True,
+                "components_dest": str(dest),
+                "components_keys_added": [],
+                "components_keys_updated": [],
+                "components_fallback_to_timestamp": False,
+            }
+
+        # Ask the LLM for labels; fall back to timestamp keys on any failure.
+        # timestamp_keys are already snake_case + safe, so they bypass sanitize.
+        fallback = False
+        timestamp_keys = {
+            r.filename: f"record_memory_icon_{r.base.replace('.', '_')}_crop"
+            for r in records
+        }
+        try:
+            label_map = self._request_component_labels(records, screenshots_dir)
+        except ComponentsLLMError as e:
+            print(f"[sync] WARNING: LLM labeling failed ({e}); using timestamp keys")
+            label_map = dict(timestamp_keys)
+            fallback = True
+
+        # Sanitize LLM-returned labels (skip the safe timestamp keys).
+        safe_labels = []
+        for r in records:
+            raw = label_map[r.filename]
+            if raw in timestamp_keys.values():
+                # Already a valid timestamp key — preserve verbatim (incl. >30 chars).
+                safe_labels.append(raw)
+            else:
+                try:
+                    safe_labels.append(sanitize_label(raw))
+                except ValueError as e:
+                    print(f"[sync] WARNING: sanitize_label failed for {r.filename} ({e}); using timestamp key")
+                    safe_labels.append(timestamp_keys[r.filename])
+                    fallback = True
+
+        safe_labels = dedup_labels(safe_labels)
+
+        # Pair safe_label with the source filename for the helper.
+        additions = {
+            safe: (safe, rec.filename)
+            for safe, rec in zip(safe_labels, records)
+        }
+
+        existing = self._load_components_json(dest)
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        keys_added, keys_updated = self._apply_components_updates(
+            dest, existing, additions, screenshots_dir / "icons", now_str,
+        )
+
+        return {
+            "components_synced": True,
+            "components_dest": str(dest),
+            "components_keys_added": keys_added,
+            "components_keys_updated": keys_updated,
+            "components_fallback_to_timestamp": fallback,
+        }
+
+    def _load_components_json(self, dest):
+        """Read dest/components.json. Missing or corrupt -> {} (with warning)."""
+        json_path = dest / "components.json"
+        if not json_path.exists():
+            return {}
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                print(f"[sync] WARNING: {json_path} is not a JSON object; treating as empty")
+                return {}
+            return data
+        except json.JSONDecodeError as e:
+            print(f"[sync] WARNING: {json_path} is corrupt ({e}); treating as empty")
+            return {}
+
+    def _apply_components_updates(self, dest, existing, additions, src_icons_dir, now_str):
+        """Copy PNGs and upsert dest/components.json.
+
+        Args:
+            dest: target components dir (we'll create dest/components/ inside).
+            existing: dict loaded from dest/components.json (may be empty).
+            additions: dict mapping safe_label -> (safe_label, source_filename).
+                The first element duplicates the key for convenience; the
+                source_filename lives in src_icons_dir.
+            src_icons_dir: directory containing the source PNGs
+                (typically <project>/screenshots/icons/).
+            now_str: timestamp string ("YYYY-MM-DD HH:MM:SS") for last_seen and
+                new learned_at.
+
+        Returns:
+            (keys_added, keys_updated) per merge_components_json semantics.
+        """
+        components_dir = dest / "components"
+        try:
+            components_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise RuntimeError(f"Could not create {components_dir}: {e}") from e
+
+        # Build full entries up-front, then copy PNGs, then upsert+write.
+        entry_additions = {}
+        for safe_label, source_filename in additions.values():
+            src = src_icons_dir / source_filename
+            entry = build_component_entry(
+                label=safe_label,
+                icon_file=f"components/{safe_label}.png",
+                learned_at=now_str,
+                last_seen=now_str,
+                seen_count=1,
+            )
+            entry_additions[safe_label] = (entry, source_filename)
+            dst = components_dir / f"{safe_label}.png"
+            try:
+                shutil.copyfile(src, dst)
+            except OSError as e:
+                raise RuntimeError(
+                    f"Could not copy {src} -> {dst}: {e}"
+                ) from e
+
+        merged, keys_added, keys_updated = merge_components_json(
+            existing, entry_additions, now_str,
+        )
+
+        json_path = dest / "components.json"
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(merged, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            raise RuntimeError(f"Could not write {json_path}: {e}") from e
+
+        return keys_added, keys_updated
+
     def _crop_with_black_padding(self, frame, x, y, crop_size=256):
         if x is None or y is None:
             return frame
@@ -353,6 +645,21 @@ class VideoScreenshotExtractor:
             "target_resolution": f"{frame_w}x{frame_h}",
             "saved_log_sc": str(out_json_sc)
         }
+
+        # Optional: sync icons to a configured harness components/ dir.
+        dest_str = os.environ.get("GUI_AGENT_COMPONENTS_DEST", "").strip()
+        if dest_str:
+            dest_path = Path(dest_str)
+            sync_meta = self._sync_components_to_dest(
+                actions, screenshots_dir, dest_path,
+            )
+            meta.update(sync_meta)
+        else:
+            meta["components_synced"] = False
+            meta["components_dest"] = None
+            meta["components_keys_added"] = []
+            meta["components_keys_updated"] = []
+            meta["components_fallback_to_timestamp"] = False
 
         return updated_actions, screenshots_dir, meta
     

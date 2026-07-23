@@ -2,9 +2,9 @@
 
 > **面向智能体执行者：** 必选子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务执行本计划。步骤使用 checkbox（`- [ ]`）语法进行追踪。
 
-**目标（Goal）：** 在录制流程中，为每次点击额外落盘一张 50×50 的原始 PNG icon 缩略图，作为既有截图产物的同级补充；保持构造器向后兼容、JSON schema 不变。
+**目标（Goal）：** 在录制流程中，为每次点击额外落盘一张 30×30 的原始 PNG icon 缩略图，作为既有截图产物的同级补充；保持构造器向后兼容、JSON schema 不变。
 
-**架构（Architecture）：** 扩展 `VideoScreenshotExtractor`，新增可选的 `icon_crop_size` 构造参数（默认 50）以及 `_save_png` 辅助方法。在 `process_actions()` 的默认点击分支中，于既有 256×256 黑边填充裁剪完成之后、绘制红色 X 之前，使用未修改的 `draw_frame` 重新裁出 `icon_crop_size × icon_crop_size` 的小图，写入 `screenshots/icons/record_memory_icon_{base}_crop.png`。icon 文件名复用现有 `base = "{timestamp:.3f}s"` 字符串，与 `{base}.jpg` / `{base}.crop.jpg` 同源。JSON schema 与其他分支保持原样。
+**架构（Architecture）：** 扩展 `VideoScreenshotExtractor`，新增可选的 `icon_crop_size` 构造参数（默认 30）以及 `_save_png` 辅助方法。在 `process_actions()` 的默认点击分支中，于既有 256×256 黑边填充裁剪完成之后、绘制红色 X 之前，使用未修改的 `draw_frame` 重新裁出 `icon_crop_size × icon_crop_size` 的小图，写入 `screenshots/icons/record_memory_icon_{base}_crop.png`。icon 文件名复用现有 `base = "{timestamp:.3f}s"` 字符串，与 `{base}.jpg` / `{base}.crop.jpg` 同源。JSON schema 与其他分支保持原样。
 
 **技术栈（Tech Stack）：** Python 3、OpenCV（`cv2`）、`unittest`（与仓库既有测试风格一致）。
 
@@ -12,7 +12,7 @@
 
 逐字摘自 `openspec/changes/add-record-memory-icon-crop/specs/record-click-icon-crop/spec.md`：
 
-- 新增构造参数：`icon_crop_size`（默认 `50`），追加在 `__init__` 参数列表**末尾**，位于 `x_thick=6` 之后。
+- 新增构造参数：`icon_crop_size`（默认 `30`），追加在 `__init__` 参数列表**末尾**，位于 `x_thick=6` 之后。
 - 新增辅助方法：`_save_png(self, path, img)`，与 `_save_jpg` 行为一致但不带 JPEG 质量参数（PNG 无损）。
 - 插入位置：`process_actions()` 默认点击分支（行 184 起的 `else:` 块）中，位于 `crop_img = self._crop_with_black_padding(...)`（行 192）**之后**、红色 X 绘制块（行 193+）**之前**。
 - 文件命名：`record_memory_icon_{base}_crop.png`，其中 `base` 是行 133 既有 `f"{timestamp:.3f}s"` 值（icon 与 `{base}.jpg`、`{base}.crop.jpg` 共享同一时间戳字符串）。
@@ -46,7 +46,7 @@
 
 **Interfaces:**
 - Consumes: 无（无前置任务）。
-- Produces: `VideoScreenshotExtractor.icon_crop_size: int` 属性，默认 `50`。既有位置参数与关键字参数调用必须保持有效。
+- Produces: `VideoScreenshotExtractor.icon_crop_size: int` 属性，默认 `30`。既有位置参数与关键字参数调用必须保持有效。
 
 - [ ] **Step 1：编写失败的测试文件**
 
@@ -64,7 +64,7 @@ from screenshot_processor import VideoScreenshotExtractor
 class IconCropSizeConstructorTest(unittest.TestCase):
     def test_zero_arg_constructor_uses_default_icon_crop_size(self):
         ext = VideoScreenshotExtractor()
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
 
     def test_explicit_icon_crop_size_kwarg_is_stored(self):
         ext = VideoScreenshotExtractor(icon_crop_size=80)
@@ -73,7 +73,7 @@ class IconCropSizeConstructorTest(unittest.TestCase):
     def test_existing_positional_args_still_work(self):
         # All 6 pre-existing positional params passed; icon_crop_size must default.
         ext = VideoScreenshotExtractor(1920, 1080, 95, 256, 30, 6)
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
         self.assertEqual(ext.target_width, 1920)
         self.assertEqual(ext.crop_size, 256)
 
@@ -81,7 +81,7 @@ class IconCropSizeConstructorTest(unittest.TestCase):
         ext = VideoScreenshotExtractor(target_width=1280, crop_size=200)
         self.assertEqual(ext.target_width, 1280)
         self.assertEqual(ext.crop_size, 200)
-        self.assertEqual(ext.icon_crop_size, 50)
+        self.assertEqual(ext.icon_crop_size, 30)
 
 
 if __name__ == "__main__":
@@ -115,7 +115,7 @@ python -m unittest record.Aloha_Learn.tests.test_screenshot_processor -v
 改为：
 
 ```python
-    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6, icon_crop_size=50):
+    def __init__(self, target_width=1920, target_height=1080, jpeg_quality=95, crop_size=256, x_size=30, x_thick=6, icon_crop_size=30):
         self.target_width = target_width
         self.target_height = target_height
         self.jpeg_quality = jpeg_quality
@@ -139,7 +139,7 @@ python -m unittest record.Aloha_Learn.tests.test_screenshot_processor -v
 
 ```bash
 git add record/Aloha_Learn/screenshot_processor.py record/Aloha_Learn/tests/test_screenshot_processor.py
-git commit -m "feat(record): add icon_crop_size constructor parameter (default 50)"
+git commit -m "feat(record): add icon_crop_size constructor parameter (default 30)"
 ```
 
 ---
@@ -315,11 +315,11 @@ class DefaultClickIconSaveTest(unittest.TestCase):
             icon_path = screenshots_path / "icons" / f"record_memory_icon_{expected_base}_crop.png"
             self.assertTrue(icon_path.exists(), f"missing icon at {icon_path}")
 
-            # 2. Icon is a valid 50x50 PNG (lossless, exact size)
+            # 2. Icon is a valid 30x30 PNG (lossless, exact size)
             icon = cv2.imread(str(icon_path), cv2.IMREAD_UNCHANGED)
             self.assertIsNotNone(icon)
-            self.assertEqual(icon.shape[0], 50)
-            self.assertEqual(icon.shape[1], 50)
+            self.assertEqual(icon.shape[0], 30)
+            self.assertEqual(icon.shape[1], 30)
 
             # 3. Existing JPG siblings still produced
             self.assertTrue((screenshots_path / f"{expected_base}.jpg").exists())
@@ -490,7 +490,7 @@ ls <project_dir>/screenshots/icons/ | head
 python -c "import cv2; img = cv2.imread('<icon_path>', cv2.IMREAD_UNCHANGED); print(img.shape)"
 ```
 
-预期：`(50, 50, 3)`。可视化打开（如用图片查看器）应确认 icon 是以点击坐标为中心的原始帧区域、无红色 X 标记；边缘点击情况下缺角处应为纯黑。
+预期：`(30, 30, 3)`。可视化打开（如用图片查看器）应确认 icon 是以点击坐标为中心的原始帧区域、无红色 X 标记；边缘点击情况下缺角处应为纯黑。
 
 - [ ] **Step 5：确认 JSON schema 未变**
 
@@ -510,7 +510,7 @@ python -c "import json; d = json.load(open('<project_dir>/<project>_processed_lo
 
 **1. Spec 覆盖：**
 
-- ✅ 默认点击产物附带 50×50 PNG → 任务 3。
+- ✅ 默认点击产物附带 30×30 PNG → 任务 3。
 - ✅ 文件名 `record_memory_icon_{base}_crop.png` 与 `{base}.jpg` 共用 `base` → 任务 3（Step 3 代码使用 `f"record_memory_icon_{base}_crop.png"`）。
 - ✅ 保存目录 `screenshots/icons/` → 任务 3（`screenshots_path / "icons" / icon_fn`）。
 - ✅ 边缘点击仍产出完整 icon 图 → 通过复用 `_crop_with_black_padding` 覆盖；任务 4 Step 4 的可视化抽检作为视觉确认。
@@ -531,7 +531,7 @@ python -c "import json; d = json.load(open('<project_dir>/<project>_processed_lo
 
 **3. 类型一致性：**
 
-- `VideoScreenshotExtractor.icon_crop_size` 在任务 1 定义为 `int`（默认 `50`），在任务 3 通过 `self.icon_crop_size` 作为 `int` 消费。
+- `VideoScreenshotExtractor.icon_crop_size` 在任务 1 定义为 `int`（默认 `30`），在任务 3 通过 `self.icon_crop_size` 作为 `int` 消费。
 - `_save_png(self, path: str, img: numpy.ndarray) -> bool` 签名在任务 2 与任务 3 中保持一致。
 - `screenshots_path / "icons"` 的 Path 算术在生产代码（任务 3）与测试代码中一致使用。
 - `base` 在生产代码（既有文件行 133）与集成测试期望值（`expected_base = f"{expected_ts:.3f}s"`）中为同一变量。

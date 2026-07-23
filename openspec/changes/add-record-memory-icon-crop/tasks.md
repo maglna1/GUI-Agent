@@ -2,7 +2,7 @@
 
 ## 1. Constructor
 
-- [ ] 1.1 在 `record/Aloha_Learn/screenshot_processor.py` 的 `VideoScreenshotExtractor.__init__` 末尾追加 `icon_crop_size=50` 参数（在 `x_thick=6` 之后）。
+- [ ] 1.1 在 `record/Aloha_Learn/screenshot_processor.py` 的 `VideoScreenshotExtractor.__init__` 末尾追加 `icon_crop_size=30` 参数（在 `x_thick=6` 之后）。
 - [ ] 1.2 在 `__init__` 函数体末尾追加 `self.icon_crop_size = icon_crop_size` 赋值。
 
 ## 2. PNG helper
@@ -29,8 +29,8 @@
 
 - [ ] 5.1 运行 `python -c "from record.Aloha_Learn.screenshot_processor import VideoScreenshotExtractor; VideoScreenshotExtractor()"` 确认构造器仍可零参调用，无 `TypeError`。
 - [ ] 5.2 若有样例项目可用，使用 `python -m record.Aloha_Learn.screenshot_processor <project>` 重跑流水线，确认 `screenshots/icons/record_memory_icon_*.png` 出现，且与既有 `{ts}.jpg` / `{ts}.crop.jpg` 同源（即 `{ts}` 与文件名前缀中的时间戳字符串一致）。
-- [ ] 5.3 抽样打开一张生成的 icon PNG，确认尺寸为 50×50（默认情况下），图像中心贴近录制点击坐标，且不含红色 X 标记。
-- [ ] 5.4 抽样一个边缘点击（如距帧边缘 < 25 像素）生成的 icon，确认仍为完整 50×50，且缺角区域为黑色。
+- [ ] 5.3 抽样打开一张生成的 icon PNG，确认尺寸为 30×30（默认情况下），图像中心贴近录制点击坐标，且不含红色 X 标记。
+- [ ] 5.4 抽样一个边缘点击（如距帧边缘 < 15 像素）生成的 icon，确认仍为完整 30×30，且缺角区域为黑色。
 - [ ] 5.5 运行 `openspec validate add-record-memory-icon-crop --json` 确认四个 artifact 通过校验。
 
 ## 6. Documentation

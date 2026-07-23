@@ -1,6 +1,6 @@
 # add-record-memory-icon-crop
 
-Add a per-click 50×50 PNG icon crop saved next to existing screenshots for record-memory use.
+Add a per-click 30×30 PNG icon crop saved next to existing screenshots for record-memory use.
 
 ## Goal
 
