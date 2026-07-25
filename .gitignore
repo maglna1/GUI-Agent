@@ -13,6 +13,9 @@
 **/reports/
 **/*.log
 
+record/Aloha_Learn/review-ui/node_modules/
+record/Aloha_Learn/review-ui/dist/
+
 .codex/
 
 record/Aloha_Learn/projects/
