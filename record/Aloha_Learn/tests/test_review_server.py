@@ -286,3 +286,133 @@ class DistMissingTest(unittest.TestCase):
                         open_browser=False, timeout_seconds=1,
                     )
                 self.assertIn("review-ui/dist missing", str(cm.exception))
+
+
+def _run_session_full(records, label_map, decisions, manual_mode=False):
+    """Run a review session end-to-end and return (result, body, components_data, png_files).
+
+    Unlike DecisionsEndpointTest._run, this exposes the dest/components.json
+    contents and the set of PNG filenames written to dest/components/ so
+    callers can assert on the actual filesystem effects of _apply_decisions.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        shots = tmp / "shots"
+        shots.mkdir()
+        _icon_files(shots, records)
+        dest = tmp / "dest"
+        dest.mkdir()
+        (dest / "components.json").write_text("{}", encoding="utf-8")
+
+        result_holder = {}
+        port_holder = {}
+
+        import review_server as rs
+        orig_server = rs.ThreadingHTTPServer
+
+        class CapturingServer(orig_server):
+            def __init__(self, addr, handler):
+                super().__init__(addr, handler)
+                port_holder["port"] = self.server_address[1]
+
+        rs.ThreadingHTTPServer = CapturingServer
+        try:
+            def runner():
+                result_holder["r"] = run_review_session(
+                    records, label_map, shots, dest,
+                    open_browser=False, timeout_seconds=5,
+                )
+
+            t = threading.Thread(target=runner, daemon=True)
+            t.start()
+
+            for _ in range(100):
+                if "port" in port_holder:
+                    break
+                time.sleep(0.02)
+            port = port_holder["port"]
+
+            status = _post_decisions(port, decisions, manual_mode=manual_mode)
+            assert status == 200, f"decisions POST returned {status}"
+            status, body = _post_finish(port)
+            assert status == 200, f"finish POST returned {status}"
+
+            t.join(timeout=5)
+        finally:
+            rs.ThreadingHTTPServer = orig_server
+
+        comp_path = dest / "components.json"
+        components_data = json.loads(comp_path.read_text(encoding="utf-8"))
+        components_dir = dest / "components"
+        png_files = set(p.name for p in components_dir.glob("*.png")) if components_dir.exists() else set()
+
+        return result_holder["r"], body, components_data, png_files
+
+
+class AcceptPathRegressionTest(unittest.TestCase):
+    """Regression tests for accept-path label sanitization and empty-label skip.
+
+    Covers two bugs found in final whole-branch review:
+    - Bug 1: count inflation when LLM label is empty (accepted+skipped both incremented)
+    - Bug 2: unsanitized LLM label in accept path (would create filenames with spaces)
+    """
+
+    def test_empty_llm_label_on_accept_counts_as_skip_only(self):
+        # Bug 1: accept with empty LLM label must increment ONLY skipped (not accepted).
+        records = [
+            IconRecord(
+                filename="record_memory_icon_0.0s_crop.png",
+                action="LClick at", coords=(100, 200), current_software="Chrome",
+                base="0.0s",
+            )
+        ]
+        label_map = {records[0].filename: ""}  # empty LLM label
+        decisions = {records[0].filename: {"action": "accept"}}
+        result, _body, _comp, _pngs = _run_session_full(records, label_map, decisions)
+
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["accepted"], 0,
+                         "empty LLM label on accept must NOT inflate accepted count")
+        self.assertEqual(result["sanitize_fallback"], 0)
+
+    def test_accept_sanitizes_llm_label(self):
+        # Bug 2: accept with a non-snake_case LLM label (e.g. "Start Button")
+        # must sanitize to "start_button" before writing to dest.
+        records = [
+            IconRecord(
+                filename="record_memory_icon_0.0s_crop.png",
+                action="LClick at", coords=(100, 200), current_software="Chrome",
+                base="0.0s",
+            )
+        ]
+        label_map = {records[0].filename: "Start Button"}  # has a space
+        decisions = {records[0].filename: {"action": "accept"}}
+        result, body, comp, pngs = _run_session_full(records, label_map, decisions)
+
+        self.assertEqual(result["accepted"], 1)
+        self.assertIn("start_button", comp, "components.json key must be sanitized")
+        self.assertIn("start_button", body.get("keys_added", []))
+        self.assertIn("start_button.png", pngs,
+                      "PNG filename must be sanitized (no spaces)")
+
+    def test_accept_falls_back_to_timestamp_key_on_unsanitizable_llm_label(self):
+        # Bug 2: accept with an unsanitizable LLM label (no safe chars) must
+        # fall back to the timestamp key and count as sanitize_fallback.
+        records = [
+            IconRecord(
+                filename="record_memory_icon_0.0s_crop.png",
+                action="LClick at", coords=(100, 200), current_software="Chrome",
+                base="0.0s",
+            )
+        ]
+        label_map = {records[0].filename: "///??**"}  # no safe chars
+        decisions = {records[0].filename: {"action": "accept"}}
+        result, body, comp, pngs = _run_session_full(records, label_map, decisions)
+
+        expected_key = "record_memory_icon_0_0s_crop"
+        self.assertEqual(result["sanitize_fallback"], 1,
+                         "unsanitizable LLM label on accept must count as sanitize_fallback")
+        self.assertEqual(result["accepted"], 0)
+        self.assertIn(expected_key, comp, "must fall back to timestamp key")
+        self.assertIn(expected_key, body.get("keys_added", []))
+        self.assertIn(f"{expected_key}.png", pngs)

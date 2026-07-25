@@ -125,14 +125,33 @@ def _apply_decisions(
             except ValueError:
                 # sanitize failed -> fall back to LLM candidate
                 label = label_map.get(r.filename, "")
+                if not label:
+                    # LLM also empty -> skip without inflating sanitize_fallback
+                    counts["skipped"] += 1
+                    continue
                 counts["sanitize_fallback"] += 1
         else:  # accept
-            label = label_map.get(r.filename, "")
-            counts["accepted"] += 1
-
-        if not label:
-            counts["skipped"] += 1
-            continue
+            raw = label_map.get(r.filename, "")
+            timestamp_key = f"record_memory_icon_{r.base.replace('.', '_')}_crop"
+            if not raw:
+                # Empty LLM label -> skip without inflating accepted
+                counts["skipped"] += 1
+                continue
+            if raw == timestamp_key:
+                # Already a valid timestamp key - preserve verbatim (bypass
+                # sanitize; matches _sync_components_to_dest's timestamp_keys
+                # short-circuit, since sanitize would truncate the _crop suffix).
+                label = raw
+                counts["accepted"] += 1
+            else:
+                try:
+                    label = sanitize_label(raw)
+                    counts["accepted"] += 1
+                except ValueError:
+                    # Unsanitizable LLM label -> fall back to timestamp key
+                    # (matches _sync_components_to_dest's ValueError branch).
+                    label = timestamp_key
+                    counts["sanitize_fallback"] += 1
 
         # Copy PNG to dest/components/<label>.png (skip if same source)
         src = screenshots_dir / "icons" / r.filename
