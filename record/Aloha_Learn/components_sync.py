@@ -26,11 +26,10 @@ class IconRecord:
     base: str
 
 
-# Pre-compiled character-class stripper: any non-alphanumeric, non-underscore
-# punctuation that is not whitespace, "/", or "-". The result is a label that
-# contains only lowercase letters, digits, and underscores — matching Python
-# identifier rules so it can be safely used as a filename / JSON key.
-_SPECIAL_CHARS_RE = re.compile(r"[^a-z0-9_\s/\-]")
+# Pre-compiled stripper for the canonical set of unsafe punctuation
+# characters in component labels. Matches gui_harness/planning/learn.py:236
+# and the TS mirror in review-ui/src/sanitize.ts.
+_SPECIAL_CHARS_RE = re.compile(r"[\:?*]")
 
 
 def sanitize_label(raw: str) -> str:

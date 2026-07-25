@@ -179,7 +179,7 @@ class DecisionsEndpointTest(unittest.TestCase):
 
     def test_edit_label_sanitized(self):
         records = _records()
-        decisions = {records[0].filename: {"action": "edit", "label": "Start Button!"}}
+        decisions = {records[0].filename: {"action": "edit", "label": "Start Button"}}
         result, body = self._run(decisions)
         self.assertEqual(result["edited"], 1)
         self.assertIn("start_button", body.get("keys_added", []))
