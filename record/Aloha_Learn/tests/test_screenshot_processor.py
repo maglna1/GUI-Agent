@@ -633,7 +633,8 @@ class ProcessProjectSyncTest(unittest.TestCase):
             }
 
             with patch.dict(os.environ,
-                            {"GUI_AGENT_COMPONENTS_DEST": str(dest)}, clear=False):
+                            {"GUI_AGENT_COMPONENTS_DEST": str(dest),
+                             "GUI_AGENT_REVIEW_DISABLE": "1"}, clear=False):
                 ext = VideoScreenshotExtractor()
                 with patch.object(ext, "_get_frame_at", return_value=np.zeros((1080, 1920, 3), dtype=np.uint8)):
                     with patch.object(ext, "_sync_components_to_dest",

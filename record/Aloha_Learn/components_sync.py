@@ -26,7 +26,9 @@ class IconRecord:
     base: str
 
 
-# Pre-compiled character-class stripper: backslash, colon, question mark, asterisk.
+# Pre-compiled stripper for the canonical set of unsafe punctuation
+# characters in component labels. Matches gui_harness/planning/learn.py:236
+# and the TS mirror in review-ui/src/sanitize.ts.
 _SPECIAL_CHARS_RE = re.compile(r"[\\:?*]")
 
 
