@@ -15,6 +15,7 @@ from components_sync import (
     build_component_entry,
     merge_components_json,
 )
+from review_server import run_review_session
 
 
 class ComponentsLLMError(Exception):
@@ -648,18 +649,84 @@ class VideoScreenshotExtractor:
 
         # Optional: sync icons to a configured harness components/ dir.
         dest_str = os.environ.get("GUI_AGENT_COMPONENTS_DEST", "").strip()
+        review_disable = os.environ.get("GUI_AGENT_REVIEW_DISABLE", "").strip()
+
         if dest_str:
             dest_path = Path(dest_str)
-            sync_meta = self._sync_components_to_dest(
-                actions, screenshots_dir, dest_path,
-            )
-            meta.update(sync_meta)
+            if review_disable:
+                # === Existing path: write LLM auto-labels directly. ===
+                sync_meta = self._sync_components_to_dest(
+                    actions, screenshots_dir, dest_path,
+                )
+                meta.update(sync_meta)
+                meta["review_decisions"] = {
+                    "accepted": 0, "edited": 0, "skipped": 0, "sanitize_fallback": 0,
+                }
+                meta["review_manual_mode"] = False
+                meta["review_timed_out"] = False
+                meta["review_port"] = None
+            else:
+                # === Review path: do NOT call _sync_components_to_dest;
+                #     let the review session do the single final write. ===
+                records = self._collect_icon_records(actions, screenshots_dir)
+                timestamp_keys = {
+                    r.filename: f"record_memory_icon_{r.base.replace('.', '_')}_crop"
+                    for r in records
+                }
+                if records:
+                    try:
+                        label_map = self._request_component_labels(records, screenshots_dir)
+                        fallback = False
+                    except ComponentsLLMError as e:
+                        print(f"[review] WARNING: LLM labeling failed ({e}); using timestamp keys")
+                        label_map = dict(timestamp_keys)
+                        fallback = True
+                    try:
+                        review_result = run_review_session(
+                            records, label_map, screenshots_dir, dest_path,
+                        )
+                    except RuntimeError:
+                        # dist missing or other hard failure — propagate per AGENT.md #2
+                        raise
+                    meta["components_synced"] = True
+                    meta["components_dest"] = str(dest_path)
+                    meta["components_keys_added"] = review_result.get("keys_added", [])
+                    meta["components_keys_updated"] = review_result.get("keys_updated", [])
+                    meta["components_fallback_to_timestamp"] = fallback
+                    meta["review_decisions"] = {
+                        "accepted": review_result.get("accepted", 0),
+                        "edited": review_result.get("edited", 0),
+                        "skipped": review_result.get("skipped", 0),
+                        "sanitize_fallback": review_result.get("sanitize_fallback", 0),
+                    }
+                    meta["review_manual_mode"] = bool(review_result.get("manual_mode", False))
+                    meta["review_timed_out"] = bool(review_result.get("timed_out", False))
+                    meta["review_port"] = review_result.get("port")
+                else:
+                    # No records: same shape as sync's empty path.
+                    meta["components_synced"] = True
+                    meta["components_dest"] = str(dest_path)
+                    meta["components_keys_added"] = []
+                    meta["components_keys_updated"] = []
+                    meta["components_fallback_to_timestamp"] = False
+                    meta["review_decisions"] = {
+                        "accepted": 0, "edited": 0, "skipped": 0, "sanitize_fallback": 0,
+                    }
+                    meta["review_manual_mode"] = False
+                    meta["review_timed_out"] = False
+                    meta["review_port"] = None
         else:
             meta["components_synced"] = False
             meta["components_dest"] = None
             meta["components_keys_added"] = []
             meta["components_keys_updated"] = []
             meta["components_fallback_to_timestamp"] = False
+            meta["review_decisions"] = {
+                "accepted": 0, "edited": 0, "skipped": 0, "sanitize_fallback": 0,
+            }
+            meta["review_manual_mode"] = False
+            meta["review_timed_out"] = False
+            meta["review_port"] = None
 
         return updated_actions, screenshots_dir, meta
     
