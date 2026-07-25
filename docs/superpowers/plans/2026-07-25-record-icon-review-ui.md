@@ -4,7 +4,7 @@
 
 **Goal:** 在 `record/Aloha_Learn/` 下新增 React + Vite + TypeScript 审核界面与 stdlib 本地 HTTP server，在 `process_project()` 末尾、icon 写入 `dest/components.json` 之前为每张 icon 提供"接受 LLM 标签 / 改写 / 跳过 / 全手动"四种决策，30 分钟超时回退到 LLM 自动命名。
 
-**Architecture:** 新增 `record/Aloha_Learn/review_server.py`（stdlib `http.server.ThreadingHTTPServer`，端口 OS 分配，绑 `127.0.0.1`，3 个端点 + 静态文件托管）和 `record/Aloha_Learn/review-ui/`（Vite + React 18 + TypeScript + Vitest + React Testing Library）。`screenshot_processor.py:process_project()` 在 LLM 标签拿到后、`_apply_components_updates` 调用前插入 `run_review_session(...)`，复用现有 `components_sync.sanitize_label` / `merge_components_json` / `_apply_components_updates`。新增环境变量 `GUI_AGENT_REVIEW_DISABLE=1` 作为 headless 逃生口。
+**Architecture:** 新增 `record/Aloha_Learn/review_server.py`（stdlib `http.server.ThreadingHTTPServer`，端口 OS 分配，绑 `127.0.0.1`，3 个端点 + 静态文件托管）和 `record/Aloha_Learn/review-ui/`（Vite + React 18 + TypeScript + Vitest + React Testing Library）。`screenshot_processor.py:process_project()` 在 `process_actions()` 之后调用 `run_review_session(...)`，dest 固定为 `<project_dir>/components_review_ui_mutimodal_memory_manual/`，复用现有 `components_sync.sanitize_label` / `merge_components_json` / `_apply_components_updates`。Review UI 永远开启，不读任何 env var；之前的 `GUI_AGENT_COMPONENTS_DEST` 与 `GUI_AGENT_REVIEW_DISABLE` 已移除。
 
 **Tech Stack:** Python 3 stdlib（`http.server` / `webbrowser` / `json` / `threading`）、Vite 5、React 18、TypeScript 5、Vitest、@testing-library/react、@testing-library/jest-dom、jsdom。
 
@@ -21,7 +21,7 @@
 - `review-ui/dist/` 缺失 → `process_project()` 抛 `RuntimeError`，不静默跳过。
 - 超时：Server 启动 30 分钟后无活动 `shutdown()`，未决定按 `accept` 走。
 - 浏览器自动拉起：`webbrowser.open(f"http://127.0.0.1:{port}/")`；失败打印手动 URL。
-- 新增环境变量：`GUI_AGENT_REVIEW_DISABLE=1`（非空值即生效）跳过 review session，直接走既有 LLM 自动同步。默认未设置。
+- **无环境变量依赖**：Review UI 永远开启；dest 固定为 `<project_dir>/components_review_ui_mutimodal_memory_manual/`。之前的 `GUI_AGENT_COMPONENTS_DEST` 与 `GUI_AGENT_REVIEW_DISABLE` 已从 `process_project()` 中移除。
 - `meta` 必含：`review_decisions: {accepted, edited, skipped}`、`review_manual_mode: bool`、`review_timed_out: bool`、`review_sanitize_fallback: int`。
 - `processed_log_sc.json` schema 不变；`components_sync.py` 不修改；`_apply_components_updates` 不修改。
 - 现有 `process_project()` 既有行为（CONFIG / 视频读取 / LLM 调用 / 时间戳 fallback）保持不变。
@@ -1513,10 +1513,11 @@ minutes) falls back to all-accept to preserve existing LLM-auto-sync."
 **Files:**
 - Modify: `record/Aloha_Learn/screenshot_processor.py` (insert `run_review_session` into `process_project` end)
 - Create: `record/Aloha_Learn/tests/test_review_integration.py`
+- Modify: `record/Aloha_Learn/tests/test_screenshot_processor.py` (remove `ProcessProjectSyncTest` class — env-var-driven sync flow no longer exists in process_project)
 
 **Interfaces:**
-- Modifies: `VideoScreenshotExtractor.process_project()` — after `_sync_components_to_dest` returns, if env var `GUI_AGENT_REVIEW_DISABLE` unset AND `components_synced` is True, call `run_review_session` with the same records/label_map/screenshots_dir/dest.
-- Produces: `meta` extended with `review_decisions`, `review_manual_mode`, `review_timed_out`, `review_sanitize_fallback`, `review_port` when review session runs.
+- Modifies: `VideoScreenshotExtractor.process_project()` — after `process_actions()` + `processed_log_sc.json` write, **always** call `run_review_session` with the collected records + LLM label_map. Dest is fixed at `<project_dir>/components_review_ui_mutimodal_memory_manual/`. No env var is read.
+- Produces: `meta` extended with `components_synced=True`, `components_dest`, `components_keys_added`, `components_keys_updated`, `components_fallback_to_timestamp`, `review_decisions`, `review_manual_mode`, `review_timed_out`, `review_port`. When no records exist (no default-click actions), the review session is skipped but the same meta shape is populated with zeros.
 
 - [ ] **Step 5.1: Write the failing tests**
 
@@ -1754,14 +1755,16 @@ Expected: All existing tests still pass + 3 new tests pass.
 
 ```bash
 cd "E:/pycharm projects/GUI-Agent-Github-Maglna1"
-git add record/Aloha_Learn/screenshot_processor.py record/Aloha_Learn/tests/test_review_integration.py
-git commit -m "feat(sync): gate dest/components.json writes behind human review session
+git add record/Aloha_Learn/screenshot_processor.py record/Aloha_Learn/tests/test_review_integration.py record/Aloha_Learn/tests/test_screenshot_processor.py
+git commit -m "feat(review-ui): always-on review session with project-internal dest
 
-process_project() now invokes run_review_session() between LLM labeling
-and the final components.json write when GUI_AGENT_REVIEW_DISABLE is unset.
-Disable env var escapes the gate for headless / CI. Meta extended with
-review_decisions / review_manual_mode / review_timed_out / review_port.
-Existing _sync_components_to_dest behavior preserved when review is on or off."
+process_project() now always invokes run_review_session() after
+process_actions(). No env var is read: review UI is the single writer,
+dest is fixed at <project_dir>/components_review_ui_mutimodal_memory_manual/.
+The legacy GUI_AGENT_COMPONENTS_DEST env var flow (and the corresponding
+GUI_AGENT_REVIEW_DISABLE escape hatch) is removed from process_project();
+_sync_components_to_dest remains a public library method for callers that
+need to bypass the review UI. Tests updated accordingly."
 ```
 
 ---
@@ -3018,30 +3021,27 @@ Run: `cd "record/Aloha_Learn/review-ui" && npm run build`
 
 Expected: `dist/index.html` exists. No TS errors.
 
-- [ ] **Step 10.4: Manual smoke test with `Examples/air_tickets`**
+- [ ] **Step 10.4: Manual smoke test with a real project**
 
 Run from `record/`:
 
 ```bash
 cd "E:/pycharm projects/GUI-Agent-Github-Maglna1/record"
-unset GUI_AGENT_REVIEW_DISABLE
-export GUI_AGENT_COMPONENTS_DEST="/tmp/review_smoke_dest"
-rm -rf "$GUI_AGENT_COMPONENTS_DEST"
-mkdir -p "$GUI_AGENT_COMPONENTS_DEST"
-python -c "
+.venv/Scripts/python.exe -c "
 import sys
-sys.path.insert(0, 'Aloha_Learn')
+from pathlib import Path
+sys.path.insert(0, str(Path('Aloha_Learn').resolve()))
 from screenshot_processor import VideoScreenshotExtractor
 ext = VideoScreenshotExtractor()
-try:
-    actions, shots, meta = ext.process_project('Aloha_Learn/Examples/air_tickets')
-    print('META:', meta)
-except Exception as e:
-    print('ERROR:', e)
+actions, shots, meta = ext.process_project('Aloha_Learn/projects/record_icon_click')
+print('=== DONE ===')
+for k in sorted(meta):
+    if k.startswith('review') or k.startswith('components'):
+        print(f'  {k}: {meta[k]}')
 "
 ```
 
-Expected: Browser opens; user can review; after submit, `dest/components.json` is populated. If no browser is available, the test should still complete via the 30-minute timeout fallback (set `GUI_AGENT_REVIEW_DISABLE=1` to skip).
+Expected: Browser opens; user can review; after submit, `<project_dir>/components_review_ui_mutimodal_memory_manual/components.json` is populated. If no browser is available, the test should fail with `RuntimeError("review-ui/dist missing")`.
 
 - [ ] **Step 10.5: Final commit if any uncommitted changes**
 

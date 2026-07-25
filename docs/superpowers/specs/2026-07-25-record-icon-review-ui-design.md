@@ -8,6 +8,8 @@
 
 `feat/record-memory-icon-crop` 分支当前在 `record/Aloha_Learn/screenshot_processor.py:process_project()` 末尾自动调用视觉模型（`_request_component_labels`）为每张 `screenshots/icons/record_memory_icon_*.png` 生成 snake_case 标签，然后经 `_sync_components_to_dest` upsert 到 `<GUI_AGENT_COMPONENTS_DEST>/components.json` 与 `components/<label>.png`。LLM 失败时整批回退到时间戳键。
 
+> **2026-07-25 后续调整：** `GUI_AGENT_COMPONENTS_DEST` env var 不再被 `process_project()` 读取；review UI **永远开启**，dest 改为 `<project_dir>/components_review_ui_mutimodal_memory_manual/`。`_sync_components_to_dest` 保留为公开库方法，需要时可手动调用。
+
 视觉模型在很多真实截图上会给出"看起来合理但语义错位"的标签（如把"任务栏的开始按钮"标成 `windows_logo`），下游 `cv2.matchTemplate` 因此命中错误组件。本变更为 LLM 自动命名后引入一道**人类审核环节**：每个 icon 在写入 `components.json` 前弹出一个 React 界面，让用户接受 LLM 候选、改写为更准的标签、或显式跳过该图。
 
 不替换 LLM 流程：LLM 仍是默认命名来源；UI 只在写入前增加一道"接受 / 改写 / 跳过"关卡。失败兜底保持 `_request_component_labels` 既有回退时间戳键语义。
@@ -31,9 +33,11 @@
 - 不支持远程访问或多用户并发。Server 单进程、单客户端。
 - 不实现"LLM 候选离线缓存 / 编辑历史 / 撤销栈"。
 
-**新增环境变量（逃生口）:**
+**无环境变量依赖:**
 
-- `GUI_AGENT_REVIEW_DISABLE=1`（任意非空值）跳过 `run_review_session`、直接走既有 LLM 自动同步路径。默认未设置 → 只要 `review-ui/dist/` 存在就开 UI。该变量仅用于 headless / CI / 用户显式禁用场景。
+- Review UI **永远开启**，不读任何 env var。
+- dest 固定为 `<project_dir>/components_review_ui_mutimodal_memory_manual/`，跟随每个 project。
+- 之前用于触发 LLM 自动同步的 `GUI_AGENT_COMPONENTS_DEST` env var 在 `process_project()` 中**不再读取**；`_sync_components_to_dest` 保留为公开方法，需要时可手动调用（不推荐，新流程以 review UI 为准）。
 
 ## Architecture
 
@@ -322,7 +326,7 @@ review-ui/src/
 1. 部署后既有项目再次走 `process_project()` 时，会先自动构建 `review-ui/`（开发者须在改 `review-ui/src` 后跑 `npm --prefix record/Aloha_Learn/review-ui run build`），然后按本规范弹出浏览器供用户决策。
 2. 已存在的 `dest/components.json` 不需重新生成；UI 仅影响**当前轮**产出的 icon。
 3. 回滚方式：删除 `record/Aloha_Learn/review_server.py` 与 `record/Aloha_Learn/review-ui/`，恢复 `screenshot_processor.py:process_project()` 中 review session 段为直接调用 `_sync_components_to_dest`。
-4. 若想彻底关掉 UI（环境无浏览器）：设置 `GUI_AGENT_REVIEW_DISABLE=1` 环境变量，`process_project()` 检测后跳过 `run_review_session`、直接走既有 LLM 自动同步。**注意：本环境变量默认未启用**——只要 `dist/` 存在就开 UI。
+4. Review UI 不能关掉——`process_project()` 总是会调用 `run_review_session`。若环境无浏览器但仍要跑（例如纯 headless CI），可以临时把 `review-ui/dist/` 移走或清空，让 `process_project()` 在 `RuntimeError("review-ui/dist missing")` 时显式失败；或手动调用 `_sync_components_to_dest(...)` 跳过 UI。
 
 ## Open Questions
 
