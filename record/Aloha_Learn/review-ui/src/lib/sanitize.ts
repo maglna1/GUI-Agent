@@ -7,8 +7,11 @@ export function sanitize(raw: string): string {
   s = s.replaceAll("\\", "-").replaceAll("/", "-");
   s = s.replace(SPECIAL_CHARS, "");
   s = s.replace(/\s+/g, "_");
-  s = s.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
-  s = s.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  s = s.replace(/-+/g, "-");
+  s = s.replace(/_+/g, "_");
+  // Strip any leading/trailing run of "-" or "_" (any order) in a single pass,
+  // matching Python's .strip("-_") which is order-independent.
+  s = s.replace(/^[-_]+|[-_]+$/g, "");
   s = s.slice(0, LABEL_MAX_LEN).replace(/[-_]+$/, "");
   if (!s) throw new Error(`label '${raw}' has no safe characters after sanitization`);
   return s;

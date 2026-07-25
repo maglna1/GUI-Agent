@@ -29,6 +29,12 @@ describe("sanitize", () => {
   it("throws when all chars are special", () => {
     expect(() => sanitize("///??**")).toThrow();
   });
+
+  it("strips leading/trailing runs of - and _ in any order (parity with Python .strip('-_'))", () => {
+    expect(sanitize("_-a")).toBe("a");
+    expect(sanitize("_-_a")).toBe("a");
+    expect(sanitize("a-_-b")).toBe("a-_-b");
+  });
 });
 
 describe("isValidLabel", () => {
