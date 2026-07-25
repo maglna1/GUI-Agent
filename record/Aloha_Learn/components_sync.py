@@ -29,7 +29,7 @@ class IconRecord:
 # Pre-compiled stripper for the canonical set of unsafe punctuation
 # characters in component labels. Matches gui_harness/planning/learn.py:236
 # and the TS mirror in review-ui/src/sanitize.ts.
-_SPECIAL_CHARS_RE = re.compile(r"[\:?*]")
+_SPECIAL_CHARS_RE = re.compile(r"[\\:?*]")
 
 
 def sanitize_label(raw: str) -> str:
