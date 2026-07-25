@@ -39,7 +39,7 @@ def sanitize_label(raw: str) -> str:
     - lowercase
     - whitespace -> "_"
     - "/" -> "-"
-    - strip any other non-alphanumeric punctuation ("\\", ":", "?", "*", "!", ...)
+    - strip "\\", ":", "?", "*"
     - truncate to 30 chars
 
     Raises ValueError when the resulting label is empty (caller should fall back
