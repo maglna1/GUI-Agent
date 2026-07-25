@@ -26,8 +26,11 @@ class IconRecord:
     base: str
 
 
-# Pre-compiled character-class stripper: backslash, colon, question mark, asterisk.
-_SPECIAL_CHARS_RE = re.compile(r"[\\:?*]")
+# Pre-compiled character-class stripper: any non-alphanumeric, non-underscore
+# punctuation that is not whitespace, "/", or "-". The result is a label that
+# contains only lowercase letters, digits, and underscores — matching Python
+# identifier rules so it can be safely used as a filename / JSON key.
+_SPECIAL_CHARS_RE = re.compile(r"[^a-z0-9_\s/\-]")
 
 
 def sanitize_label(raw: str) -> str:
@@ -37,7 +40,7 @@ def sanitize_label(raw: str) -> str:
     - lowercase
     - whitespace -> "_"
     - "/" -> "-"
-    - strip "\\", ":", "?", "*"
+    - strip any other non-alphanumeric punctuation ("\\", ":", "?", "*", "!", ...)
     - truncate to 30 chars
 
     Raises ValueError when the resulting label is empty (caller should fall back
