@@ -13,7 +13,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from components_sync import IconRecord
-from review_server import run_review_session, _launch_ui, ReviewSessionResult
+from review_server import (
+    _launch_ui,
+    _try_launch_puppeteer,
+    run_review_session,
+    ReviewSessionResult,
+)
 
 
 def _free_port() -> int:
@@ -485,14 +490,149 @@ class LauncherTest(unittest.TestCase):
                 )
         self.assertIn("pywebview", str(cm.exception))
 
-    def test_launcher_auto_falls_back_to_webbrowser_when_pywebview_missing(self):
-        with patch.dict(sys.modules, {"webview": None}):
-            with patch("review_server.webbrowser.open") as mock_open:
-                _launch_ui(
-                    url="http://127.0.0.1:5555/",
-                    launcher="auto",
-                    window_title="Test",
-                    window_width=1024,
-                    window_height=768,
-                )
+    def test_launcher_auto_falls_back_to_webbrowser_when_both_native_launchers_missing(self):
+        # auto prefers puppeteer, then webview; with both unavailable, fall back to webbrowser.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dist").mkdir()
+            # No node_modules/puppeteer → puppeteer launcher not satisfied
+            with patch("review_server._REVIEW_UI_DIST", tmp / "dist"):
+                with patch("review_server.shutil.which", return_value="/usr/bin/node"):
+                    with patch.dict(sys.modules, {"webview": None}):
+                        with patch("review_server.webbrowser.open") as mock_open:
+                            _launch_ui(
+                                url="http://127.0.0.1:5555/",
+                                launcher="auto",
+                                window_title="Test",
+                                window_width=1024,
+                                window_height=768,
+                            )
         mock_open.assert_called_once_with("http://127.0.0.1:5555/")
+
+
+class PuppeteerLauncherTest(unittest.TestCase):
+    """launcher='puppeteer' / 'auto' prefers spawning the Node launcher.cjs subprocess."""
+
+    def _make_fake_popen(self):
+        """Return (FakePopen, calls_list)."""
+        calls = []
+
+        class FakePopen:
+            def __init__(self, *args, **kwargs):
+                calls.append((args, kwargs))
+
+        return FakePopen, calls
+
+    def test_launcher_puppeteer_spawns_launcher_script(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dist").mkdir()
+            (tmp / "node_modules" / "puppeteer").mkdir(parents=True)
+            (tmp / "node_modules" / "puppeteer" / "package.json").write_text("{}")
+            (tmp / "scripts").mkdir()
+            (tmp / "scripts" / "launcher.cjs").write_text("// stub")
+            FakePopen, calls = self._make_fake_popen()
+            with patch("review_server._REVIEW_UI_DIST", tmp / "dist"):
+                with patch("review_server.shutil.which", return_value="/usr/bin/node"):
+                    with patch("review_server.subprocess.Popen", new=FakePopen):
+                        with patch("review_server.sys.platform", "win32"):
+                            _try_launch_puppeteer(
+                                url="http://127.0.0.1:5555/",
+                                window_title="My Win",
+                                width=1024,
+                                height=768,
+                            )
+            self.assertEqual(len(calls), 1)
+            args, kwargs = calls[0]
+            # review_server calls Popen(**kwargs), so the mock receives
+            # args=() and the argv lives in kwargs["args"].
+            self.assertEqual(args, ())
+            argv = kwargs["args"]
+            self.assertEqual(argv[0], "/usr/bin/node")
+            self.assertTrue(str(argv[1]).endswith("launcher.cjs"))
+            self.assertIn("--port", argv)
+            self.assertIn("5555", argv)
+            self.assertIn("--title", argv)
+            self.assertIn("My Win", argv)
+            self.assertIn("--width", argv)
+            self.assertIn("1024", argv)
+            self.assertIn("--height", argv)
+            self.assertIn("768", argv)
+            self.assertIn("creationflags", kwargs)
+            import subprocess as _sp
+            self.assertTrue(kwargs["creationflags"] & _sp.DETACHED_PROCESS)
+
+    def test_launcher_puppeteer_returns_false_when_node_not_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dist").mkdir()
+            with patch("review_server._REVIEW_UI_DIST", tmp / "dist"):
+                with patch("review_server.shutil.which", return_value=None):
+                    self.assertFalse(_try_launch_puppeteer(
+                        url="http://127.0.0.1:5555/",
+                        window_title="X", width=1024, height=768,
+                    ))
+
+    def test_launcher_puppeteer_returns_false_when_puppeteer_not_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dist").mkdir()
+            with patch("review_server._REVIEW_UI_DIST", tmp / "dist"):
+                with patch("review_server.shutil.which", return_value="/usr/bin/node"):
+                    self.assertFalse(_try_launch_puppeteer(
+                        url="http://127.0.0.1:5555/",
+                        window_title="X", width=1024, height=768,
+                    ))
+
+    def test_launcher_puppeteer_returns_false_when_launcher_script_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dist").mkdir()
+            (tmp / "node_modules" / "puppeteer").mkdir(parents=True)
+            (tmp / "node_modules" / "puppeteer" / "package.json").write_text("{}")
+            with patch("review_server._REVIEW_UI_DIST", tmp / "dist"):
+                with patch("review_server.shutil.which", return_value="/usr/bin/node"):
+                    self.assertFalse(_try_launch_puppeteer(
+                        url="http://127.0.0.1:5555/",
+                        window_title="X", width=1024, height=768,
+                    ))
+
+    def test_launcher_auto_prefers_puppeteer_when_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dist").mkdir()
+            (tmp / "node_modules" / "puppeteer").mkdir(parents=True)
+            (tmp / "node_modules" / "puppeteer" / "package.json").write_text("{}")
+            (tmp / "scripts").mkdir()
+            (tmp / "scripts" / "launcher.cjs").write_text("// stub")
+            FakePopen, _calls = self._make_fake_popen()
+            with patch("review_server._REVIEW_UI_DIST", tmp / "dist"):
+                with patch("review_server.shutil.which", return_value="/usr/bin/node"):
+                    with patch("review_server.subprocess.Popen", new=FakePopen):
+                        with patch("review_server.sys.platform", "win32"):
+                            with patch("review_server.webbrowser.open") as mock_open:
+                                _launch_ui(
+                                    url="http://127.0.0.1:5555/",
+                                    launcher="auto",
+                                    window_title="Auto Test",
+                                    window_width=1024,
+                                    window_height=768,
+                                )
+            # Puppeteer was tried — webbrowser fallback was NOT hit.
+            mock_open.assert_not_called()
+
+    def test_launcher_puppeteer_raises_when_unavailable_and_forced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dist").mkdir()
+            with patch("review_server._REVIEW_UI_DIST", tmp / "dist"):
+                with patch("review_server.shutil.which", return_value=None):
+                    with self.assertRaises(RuntimeError) as cm:
+                        _launch_ui(
+                            url="http://127.0.0.1:5555/",
+                            launcher="puppeteer",
+                            window_title="X",
+                            window_width=1024,
+                            window_height=768,
+                        )
+            self.assertIn("puppeteer", str(cm.exception))
