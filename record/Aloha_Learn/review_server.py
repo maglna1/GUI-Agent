@@ -331,12 +331,86 @@ def _make_handler(
     return Handler
 
 
+def _launch_ui(
+    *,
+    url: str,
+    launcher: str,
+    window_title: str,
+    window_width: int,
+    window_height: int,
+) -> None:
+    """Open the review UI in a pywebview native window (preferred) or a browser.
+
+    Tries pywebview first when launcher is "auto" or "webview"; falls back to
+    webbrowser.open() when "auto" and pywebview is unavailable (e.g. headless CI).
+
+    On Windows pywebview uses Edge WebView2 (system-bundled). On macOS it uses
+    WKWebView, on Linux gtkwebkit. The native window gives a much better UX
+    than spawning a browser tab: proper title, icon, sizing, dark-mode aware.
+    """
+    use_webview = False
+    if launcher in ("auto", "webview"):
+        try:
+            import webview  # type: ignore
+        except ImportError:
+            if launcher == "webview":
+                raise ImportError(
+                    "pywebview is required for launcher='webview' but is not installed. "
+                    "Install with: pip install pywebview"
+                )
+        else:
+            use_webview = True
+
+    if use_webview:
+        # pywebview 6.x API: create_window() registers the window; start() launches
+        # the event loop and runs until all windows are closed. start() takes no
+        # `window` kwarg — passing one is an error in 6.x (was the old 3.x API).
+        try:
+            webview.create_window(
+                title=window_title,
+                url=url,
+                width=window_width,
+                height=window_height,
+                resizable=True,
+            )
+            webview.start()
+            return
+        except Exception as e:
+            # WebView2 missing on Windows, or display server unavailable on Linux.
+            if launcher == "webview":
+                raise
+            print(f"[review] pywebview failed ({e}); falling back to webbrowser")
+            # Fall through to webbrowser.
+
+    # Browser fallback.
+    try:
+        webbrowser.open(url)
+    except webbrowser.Error:
+        print(f"[review] Open {url} manually")
+
+
 def run_review_session(
     records, label_map, screenshots_dir: Path, dest: Path,
     *, open_browser: bool = True, timeout_seconds: int = _TIMEOUT_SECONDS_DEFAULT,
     now_str: Optional[str] = None,
+    launcher: str = "browser",
+    window_title: str = "Record Icon Review",
+    window_width: int = 1280,
+    window_height: int = 800,
 ) -> dict:
     """Run the review session, blocking until /api/finish or timeout.
+
+    launcher: "browser" (default, opens in system browser via webbrowser.open),
+    "webview" (force pywebview native window; raise ImportError if missing),
+    "auto" (prefer pywebview, fall back to browser).
+
+    The default is "browser" because pywebview 6.x + pythonnet 3.x + WebView2
+    runtime has a known `NavigateToString(int)` dispatcher bug on some Windows
+    installs that leaves the native window blank. Users who want the native
+    window can pass launcher="webview" explicitly once their environment is
+    verified working.
+
+    open_browser: if False, skip the launch step entirely (headless / CI).
 
     Returns dict with keys: accepted, edited, skipped, sanitize_fallback,
     keys_added, keys_updated, manual_mode, timed_out, port.
@@ -363,10 +437,13 @@ def run_review_session(
 
     # Auto-open browser
     if open_browser:
-        try:
-            webbrowser.open(f"http://127.0.0.1:{port}/")
-        except webbrowser.Error:
-            print(f"[review] Open http://127.0.0.1:{port}/ manually")
+        _launch_ui(
+            url=f"http://127.0.0.1:{port}/",
+            launcher=launcher,
+            window_title=window_title,
+            window_width=window_width,
+            window_height=window_height,
+        )
 
     # Run server in a thread so we can monitor timeout
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)

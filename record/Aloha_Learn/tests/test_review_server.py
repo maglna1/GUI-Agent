@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from components_sync import IconRecord
-from review_server import run_review_session, ReviewSessionResult
+from review_server import run_review_session, _launch_ui, ReviewSessionResult
 
 
 def _free_port() -> int:
@@ -416,3 +416,83 @@ class AcceptPathRegressionTest(unittest.TestCase):
         self.assertIn(expected_key, comp, "must fall back to timestamp key")
         self.assertIn(expected_key, body.get("keys_added", []))
         self.assertIn(f"{expected_key}.png", pngs)
+
+
+class LauncherTest(unittest.TestCase):
+    """The run_review_session `launcher` arg controls whether pywebview or webbrowser opens the UI."""
+
+    def _fake_webview(self):
+        """Return a fake webview module that records calls."""
+        calls = {"start": [], "create_window": []}
+
+        class FakeWebview:
+            @staticmethod
+            def create_window(**kwargs):
+                calls["create_window"].append(kwargs)
+                return object()
+
+            @staticmethod
+            def start(*args, **kwargs):
+                # pywebview 6.x: start() takes no args (no `window`).
+                # Accept any legacy call shape defensively.
+                calls["start"].append((args, kwargs))
+                # Simulate user closing the window — return immediately.
+
+        return type("M", (), {"create_window": FakeWebview.create_window,
+                              "start": FakeWebview.start,
+                              "_calls": calls})
+
+    def test_launcher_webview_uses_pywebview_when_available(self):
+        fake = self._fake_webview()
+        with patch.dict(sys.modules, {"webview": fake}):
+            _launch_ui(
+                url="http://127.0.0.1:5555/",
+                launcher="webview",
+                window_title="Test",
+                window_width=1024,
+                window_height=768,
+            )
+        self.assertEqual(len(fake._calls["create_window"]), 1)
+        kwargs = fake._calls["create_window"][0]
+        self.assertEqual(kwargs["title"], "Test")
+        self.assertEqual(kwargs["url"], "http://127.0.0.1:5555/")
+        self.assertEqual(kwargs["width"], 1024)
+        self.assertEqual(kwargs["height"], 768)
+        self.assertEqual(len(fake._calls["start"]), 1)
+
+    def test_launcher_browser_skips_pywebview(self):
+        fake = self._fake_webview()
+        with patch.dict(sys.modules, {"webview": fake}):
+            with patch("review_server.webbrowser.open") as mock_open:
+                _launch_ui(
+                    url="http://127.0.0.1:5555/",
+                    launcher="browser",
+                    window_title="Test",
+                    window_width=1024,
+                    window_height=768,
+                )
+        mock_open.assert_called_once_with("http://127.0.0.1:5555/")
+
+    def test_launcher_webview_raises_when_pywebview_missing(self):
+        with patch.dict(sys.modules, {"webview": None}):
+            with self.assertRaises(ImportError) as cm:
+                _launch_ui(
+                    url="http://127.0.0.1:5555/",
+                    launcher="webview",
+                    window_title="Test",
+                    window_width=1024,
+                    window_height=768,
+                )
+        self.assertIn("pywebview", str(cm.exception))
+
+    def test_launcher_auto_falls_back_to_webbrowser_when_pywebview_missing(self):
+        with patch.dict(sys.modules, {"webview": None}):
+            with patch("review_server.webbrowser.open") as mock_open:
+                _launch_ui(
+                    url="http://127.0.0.1:5555/",
+                    launcher="auto",
+                    window_title="Test",
+                    window_width=1024,
+                    window_height=768,
+                )
+        mock_open.assert_called_once_with("http://127.0.0.1:5555/")
