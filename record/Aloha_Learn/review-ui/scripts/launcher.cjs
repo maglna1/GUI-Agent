@@ -82,23 +82,26 @@ async function main() {
   try {
     browser = await puppeteer.launch({
       headless: false,
-      // --app=URL         opens a real app window (no chrome UI: no address bar,
-      //                   no tabs, no bookmarks bar). The URL is a no-op here; the
-      //                   real URL is loaded via page.goto() below.
+      // --app=URL         opens a real app window (no chrome UI: no address
+      //                   bar, no tabs, no bookmarks bar, no nav buttons).
+      //                   The URL must be a real, navigable URL — passing
+      //                   `data:text/html,` makes Chromium fall back to a
+      //                   full browser window with chrome UI on any
+      //                   subsequent page.goto() / navigation.
       // --window-size     initial window size
       // --window-position center the window on the primary display
       // --disable-features=Translate  skip the translate popup noise
       args: [
-        `--app=data:text/html,`,
+        `--app=${url}`,
         `--window-size=${args.width},${args.height}`,
         "--window-position=center",
-        "--disable-features=Translate",
+        "--disable-features=Translate,InfiniteSessionRestore",
         "--no-default-browser-check",
         "--no-first-run",
+        "--disable-session-crashed-bubble",
+        "--disable-infobars",
       ],
       defaultViewport: null, // respect --window-size; don't force a viewport
-      // backgroundColor is the initial render color (avoids white flash).
-      // Background color also matches our dark/light mode surface via prefers-color-scheme.
     });
   } catch (e) {
     process.stderr.write(`[launcher] failed to launch Chromium: ${e.message}\n`);
@@ -111,13 +114,20 @@ async function main() {
     browser.on("disconnected", () => resolve("closed"));
   });
 
-  const page = await browser.newPage();
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
-  } catch (e) {
-    process.stderr.write(`[launcher] failed to load ${url}: ${e.message}\n`);
-    await browser.close().catch(() => {});
-    process.exit(2);
+  // Wait for the initial page to be ready so we know the server is up.
+  // We don't need to navigate elsewhere — --app=URL already loaded the right page.
+  const pages = await browser.pages();
+  if (pages.length > 0) {
+    try {
+      await pages[0].waitForFunction(
+        () => document.readyState === "complete",
+        { timeout: 10000 }
+      );
+    } catch (e) {
+      // Page never reached complete; the user will see whatever loaded.
+      // We don't exit — let the user see and decide.
+      process.stderr.write(`[launcher] page did not reach complete: ${e.message}\n`);
+    }
   }
 
   // Hand control to the user. We exit when the window closes.
