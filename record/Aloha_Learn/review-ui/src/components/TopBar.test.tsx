@@ -3,23 +3,30 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { TopBar } from "./TopBar";
 
 describe("TopBar", () => {
-  it("renders counts and the manual-mode toggle", () => {
+  it("renders brand, count pills, progress bar, and the manual-mode toggle", () => {
     render(
       <TopBar
         totalIcons={10}
         accepted={3}
         edited={2}
         skipped={1}
+        reviewed={6}
         manualMode={false}
         onToggleManual={() => {}}
         onAcceptAll={() => {}}
         onSubmit={() => {}}
       />
     );
-    expect(screen.getByText(/共 10 张/)).toBeInTheDocument();
-    expect(screen.getByText(/3 accept/)).toBeInTheDocument();
-    expect(screen.getByText(/2 edit/)).toBeInTheDocument();
-    expect(screen.getByText(/1 skip/)).toBeInTheDocument();
+    expect(screen.getByText("Record Icon Review")).toBeInTheDocument();
+    // Count pills are spans with text "✓ 3", "✎ 2", "⨯ 1" etc.
+    expect(screen.getByText(/✓/)).toBeInTheDocument();
+    expect(screen.getByText(/✎/)).toBeInTheDocument();
+    expect(screen.getByText(/⨯/)).toBeInTheDocument();
+    expect(screen.getByText(/\/\s*10/)).toBeInTheDocument(); // "/ 10" total indicator
+    // Progress bar reflects reviewed/total
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "6");
+    expect(bar).toHaveAttribute("aria-valuemax", "10");
     expect(screen.getByLabelText(/全手动/)).toBeInTheDocument();
   });
 
@@ -33,6 +40,7 @@ describe("TopBar", () => {
         accepted={0}
         edited={0}
         skipped={0}
+        reviewed={0}
         manualMode={false}
         onToggleManual={onToggle}
         onAcceptAll={onAcceptAll}

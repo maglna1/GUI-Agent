@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -331,12 +332,172 @@ def _make_handler(
     return Handler
 
 
+def _launch_ui(
+    *,
+    url: str,
+    launcher: str,
+    window_title: str,
+    window_width: int,
+    window_height: int,
+) -> None:
+    """Open the review UI in a native window (pywebview / puppeteer) or browser.
+
+    launcher values:
+      - "browser" (default): opens in the system browser via webbrowser.open()
+      - "webview": native window via pywebview (Edge WebView2 on Windows)
+      - "puppeteer": native window via Chromium --app mode (most reliable)
+      - "auto": prefer puppeteer → webview → browser
+
+    Native windows give a real desktop-app feel (proper title/icon, no browser
+    chrome). For puppeteer, the launcher.cjs script blocks until the user closes
+    the window; we spawn it and return immediately — the launcher's lifetime
+    is decoupled from the review server's /api/finish wait.
+    """
+    if launcher in ("auto", "puppeteer"):
+        if _try_launch_puppeteer(url, window_title, window_width, window_height):
+            return
+        if launcher == "puppeteer":
+            raise RuntimeError(
+                "puppeteer launcher failed; check that node + puppeteer are installed "
+                "and the Chromium download in ~/.cache/puppeteer succeeded."
+            )
+
+    if launcher in ("auto", "webview"):
+        try:
+            if _try_launch_webview(url, window_title, window_width, window_height):
+                return
+        except ImportError:
+            if launcher == "webview":
+                raise ImportError(
+                    "pywebview is required for launcher='webview' but is not installed. "
+                    "Install with: pip install pywebview"
+                )
+        except Exception:
+            pass  # already logged inside _try_launch_webview
+        if launcher == "webview":
+            raise RuntimeError("pywebview launcher failed")
+
+    # Browser fallback.
+    try:
+        webbrowser.open(url)
+    except webbrowser.Error:
+        print(f"[review] Open {url} manually")
+
+
+def _try_launch_puppeteer(
+    url: str, window_title: str, width: int, height: int,
+) -> bool:
+    """Spawn the Node.js launcher.cjs which opens a Chromium --app window.
+
+    Returns True on successful spawn, False on failure. The child process
+    blocks until the user closes the window; we do not wait for it.
+    """
+    # Find launcher.cjs relative to this file:
+    # review_server.py lives in record/Aloha_Learn/, launcher.cjs in
+    # record/Aloha_Learn/review-ui/scripts/. Use the same _REVIEW_UI_DIST
+    # parent (review-ui/) to find scripts/launcher.cjs.
+    scripts_dir = _REVIEW_UI_DIST.parent / "scripts"
+    launcher_script = scripts_dir / "launcher.cjs"
+    if not launcher_script.exists():
+        print(f"[review] puppeteer launcher not found at {launcher_script}")
+        return False
+
+    # Look for node on PATH. If not found, fail gracefully.
+    node_exe = shutil.which("node")
+    if node_exe is None:
+        print("[review] 'node' not found on PATH; install Node.js to use puppeteer launcher")
+        return False
+
+    # Check that node_modules has puppeteer (otherwise launcher.cjs will fail at require).
+    puppeteer_pkg = _REVIEW_UI_DIST.parent / "node_modules" / "puppeteer" / "package.json"
+    if not puppeteer_pkg.exists():
+        print(f"[review] puppeteer not installed at {puppeteer_pkg.parent}; "
+              f"run `npm --prefix record/Aloha_Learn/review-ui install`")
+        return False
+
+    try:
+        # Parse port from URL.
+        from urllib.parse import urlparse
+        port = urlparse(url).port
+        if not port:
+            print(f"[review] could not parse port from {url}")
+            return False
+
+        # Detach so the launcher survives if the parent process exits unexpectedly.
+        # On Windows, use DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP. On POSIX,
+        # start_new_session does the same job.
+        kwargs: dict = {
+            "args": [node_exe, str(launcher_script),
+                    "--port", str(port),
+                    "--title", window_title,
+                    "--width", str(width),
+                    "--height", str(height)],
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "stdin": subprocess.DEVNULL,
+        }
+        if sys.platform == "win32":
+            kwargs["creationflags"] = (
+                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            kwargs["start_new_session"] = True
+        subprocess.Popen(**kwargs)
+        print(f"[review] puppeteer launcher spawned for {url}")
+        return True
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[review] puppeteer spawn failed: {e}")
+        return False
+
+
+def _try_launch_webview(
+    url: str, window_title: str, width: int, height: int,
+) -> bool:
+    """Try pywebview. Returns True on success.
+
+    Raises ImportError if pywebview is not installed (callers can distinguish
+    "module missing" from "runtime error"). Other exceptions during
+    webview.start() are caught and converted to a False return so the caller
+    can fall back to webbrowser.
+    """
+    try:
+        import webview  # type: ignore
+    except ImportError:
+        # Re-raise — callers can distinguish "missing" from "runtime fail".
+        raise
+
+    try:
+        webview.create_window(
+            title=window_title,
+            url=url,
+            width=width,
+            height=height,
+            resizable=True,
+        )
+        webview.start()
+        return True
+    except Exception as e:
+        print(f"[review] pywebview failed ({e}); falling back")
+        return False
+
+
 def run_review_session(
     records, label_map, screenshots_dir: Path, dest: Path,
     *, open_browser: bool = True, timeout_seconds: int = _TIMEOUT_SECONDS_DEFAULT,
     now_str: Optional[str] = None,
+    launcher: str = "auto",
+    window_title: str = "Record Icon Review",
+    window_width: int = 1280,
+    window_height: int = 800,
 ) -> dict:
     """Run the review session, blocking until /api/finish or timeout.
+
+    launcher: "auto" (default; prefer puppeteer → webview → browser),
+    "puppeteer" (force Chromium --app window; raise if unavailable),
+    "webview" (force pywebview native window; raise if unavailable),
+    "browser" (always use webbrowser.open).
+
+    open_browser: if False, skip the launch step entirely (headless / CI).
 
     Returns dict with keys: accepted, edited, skipped, sanitize_fallback,
     keys_added, keys_updated, manual_mode, timed_out, port.
@@ -363,10 +524,13 @@ def run_review_session(
 
     # Auto-open browser
     if open_browser:
-        try:
-            webbrowser.open(f"http://127.0.0.1:{port}/")
-        except webbrowser.Error:
-            print(f"[review] Open http://127.0.0.1:{port}/ manually")
+        _launch_ui(
+            url=f"http://127.0.0.1:{port}/",
+            launcher=launcher,
+            window_title=window_title,
+            window_width=window_width,
+            window_height=window_height,
+        )
 
     # Run server in a thread so we can monitor timeout
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)

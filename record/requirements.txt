@@ -3,3 +3,9 @@ opencv-python>=4.8.0
 requests>=2.25.0
 Pillow>=10.0.0
 python-dotenv>=1.0.1
+
+# Optional: native review-UI window (launcher="webview"). Not required for the
+# default browser-based launcher. Known to have a NavigateToString(int) bug on
+# some Windows installs with pythonnet 3.x + WebView2 runtime; install only if
+# you need the native window and your environment is verified working.
+pywebview>=5.0.0  # optional
