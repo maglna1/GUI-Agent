@@ -1,9 +1,12 @@
 import './contracts/validation.test.js';
 import './cli/cli.test.js';
+import './cli/tap-icon.test.js';
 import './conversion/showui-trace.test.js';
 import './task/data-paths.test.js';
 import './task/task-core.test.js';
 import './task/execution.test.js';
 import './executors/keyboard-type-action.test.js';
 import './executors/yaml-runner.test.js';
+import './icon-memory/find-icon.test.js';
+import './icon-memory/load-and-yaml.test.js';
 import './skill/package.test.js';

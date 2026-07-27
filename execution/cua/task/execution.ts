@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { ExecutorResult, JsonObject, ResolvedTaskResult, TaskCatalogRoots } from '../contracts/types.js';
 import { executeMidsceneYaml, type MidsceneYamlExecutionOptions } from '../../executors/midscene-yaml.js';
+import { findIconByLabel } from '../icon-memory/find-icon.js';
+import { buildTapIconYaml } from '../icon-memory/tap-icon-yaml.js';
 import { resolveTask } from './tasks.js';
 import { validateYamlDocument, writeYamlDocument } from './yaml-task.js';
 
@@ -186,4 +188,40 @@ export async function runPrompt(options: {
     options.executor ?? executeMidsceneYaml,
   );
   return { yamlPath, executorResult };
+}
+
+/**
+ * 按 label 在图标记忆库中找图标，构造 aiTap YAML 并执行（点击屏幕上对应图标）。
+ *
+ * 图标记忆库扫描约定：每个 libraryRoot 下的
+ *   <project>/components_review_ui_mutimodal_memory_manual/components/<label>.png
+ * 这是 record 流程 review UI 的产物。同名 label 多 project 时取字母序第一个。
+ *
+ * @returns yamlPath（写出的 YAML 路径）+ iconPath（命中的图标路径）+ executorResult
+ */
+export async function runTapIcon(options: {
+  label: string;
+  libraryRoots: string[];
+  runsRoot: string;
+  dryRun?: boolean;
+  executor?: typeof executeMidsceneYaml;
+}): Promise<{ yamlPath: string; iconPath: string; executorResult: ExecutorResult }> {
+  const iconPath = await findIconByLabel(options.label, options.libraryRoots);
+  if (iconPath === undefined) {
+    throw new Error(
+      `图标记忆库中未找到 label="${options.label}" 的图标。` +
+        `扫描路径：${options.libraryRoots.map((r) => `${r}/*/components_review_ui_mutimodal_memory_manual/components/${options.label}.png`).join('；')}`,
+    );
+  }
+  const yaml = await buildTapIconYaml(options.label, iconPath);
+  const runDirectory = await createRunDirectory(options.runsRoot);
+  const yamlPath = path.join(runDirectory, 'tap-icon.yaml');
+  await writeFile(yamlPath, yaml, 'utf8');
+  const executorResult = await execute(
+    yamlPath,
+    runDirectory,
+    options.dryRun ?? false,
+    options.executor ?? executeMidsceneYaml,
+  );
+  return { yamlPath, iconPath, executorResult };
 }

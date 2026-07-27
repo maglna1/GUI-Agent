@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { convertTrace } from '../conversion/showui-trace.js';
 import type { JsonObject } from '../contracts/types.js';
 import { requireDataPaths, resolveRuntimeLayout } from '../task/data-paths.js';
-import { runPrompt, runRecordedTaskAiAct, runTask } from '../task/execution.js';
+import { runPrompt, runRecordedTaskAiAct, runTapIcon, runTask } from '../task/execution.js';
 import { loadRuntimeInputs } from '../task/inputs.js';
 import { describeTask, listScenes, listTasks, resolveTask } from '../task/tasks.js';
 import { dumpYamlDocument } from '../task/yaml-task.js';
@@ -32,6 +32,9 @@ export const helpText = `CUA 场景、任务与 Midscene YAML 执行工具
 整体 aiAct：
   act run --prompt <要求> [--dry-run]
   act run --scene <scene> --task <task> [--input key=value] [--dry-run]
+
+按 label 点击屏幕图标：
+  act tap-icon --label <name> [--icon-library <path>...] [--dry-run]
 `;
 
 const commandOptions: Record<string, { values: string[]; booleans: string[]; repeated?: string[]; required?: string[] }> = {
@@ -66,6 +69,12 @@ const commandOptions: Record<string, { values: string[]; booleans: string[]; rep
     booleans: ['dry-run'],
     repeated: ['input'],
   },
+  'act tap-icon': {
+    values: ['label', 'icon-library', 'data-root'],
+    booleans: ['dry-run'],
+    repeated: ['icon-library'],
+    required: ['label'],
+  },
 };
 
 function parseCommand(argv: string[]): { domain: string; command: string; options: ParsedOptions } {
@@ -98,7 +107,7 @@ function parseCommand(argv: string[]): { domain: string; command: string; option
   for (const required of definition.required ?? []) {
     if (options[required] === undefined) throw new CliUsageError(`必须提供 --${required}`);
   }
-  if (domain === 'act') {
+  if (domain === 'act' && command === 'run') {
     const hasPrompt = options.prompt !== undefined;
     const providedTaskOptions = ['scene', 'task', 'inputs', 'input'].filter((name) => options[name] !== undefined);
     if (hasPrompt && providedTaskOptions.length) {
@@ -121,6 +130,16 @@ function json(valueToRender: unknown): string {
 
 function quoteCommandValue(input: string): string {
   return `"${input.replaceAll('"', '\\"')}"`;
+}
+
+/**
+ * act tap-icon 的默认图标库根：repo 根下的 record/Aloha_Learn/projects。
+ * main.ts 位于 execution/cua/cli/，往上三级到 repo 根。开发仓内开箱即用；
+ * Skill 发布后该路径不存在，用户需显式传 --icon-library。
+ */
+function defaultIconLibraryRoot(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(here, '..', '..', '..', 'record', 'Aloha_Learn', 'projects');
 }
 
 function buildConversionCommand(options: ParsedOptions): string {
@@ -223,6 +242,24 @@ export async function runCliCommand(argv: string[]): Promise<string> {
   }
   if (domain === 'act') {
     const data = await requireDataPaths(layout);
+    if (command === 'tap-icon') {
+      const label = value(options, 'label')!;
+      const libraryRoots = (options['icon-library'] as string[] | undefined) ?? [defaultIconLibraryRoot()];
+      const run = await runTapIcon({
+        label,
+        libraryRoots,
+        runsRoot: data.runsRoot,
+        dryRun: Boolean(options['dry-run']),
+      });
+      return json({
+        mode: 'tap-icon',
+        label,
+        iconPath: run.iconPath,
+        runDir: path.dirname(run.yamlPath),
+        tapIconYamlPath: run.yamlPath,
+        executor: run.executorResult,
+      });
+    }
     const prompt = value(options, 'prompt');
     if (prompt !== undefined) {
       const run = await runPrompt({ prompt, runsRoot: data.runsRoot, dryRun: Boolean(options['dry-run']) });
