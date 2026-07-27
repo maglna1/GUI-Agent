@@ -56,6 +56,7 @@ description: 使用本地场景/任务与 Midscene computer use 发现、创建�
 3. 使用 `task inspect ... --input <id>=<value>` 查看 resolved YAML，使用 `task validate` 静态验证。
 4. 稳定录制任务默认使用 `task run`；用户明确要求统一规划时使用 `act run --scene/--task`。
 5. 无录制时使用 `act run --prompt "<电脑操作要求>"`。
+6. 按图标名点击屏幕元素：使用 `act tap-icon --label <name> [--icon-library <path>] [--dry-run]`。从 record review UI 的产物（`<project>/components_review_ui_mutimodal_memory_manual/components/<name>.png`）里匹配图标，把图标作为参考图片传给 Midscene aiTap，让 VLM 在屏幕截图上定位并点击。无 `--dry-run` 时操作真实电脑（必须串行）。
 
 `--dry-run` 不调用模型、不创建设备、不验证页面定位，不得描述为模拟执行。执行失败后报告原始错误并等待决定，不得自动切换模式、修改任务或重试。
 
