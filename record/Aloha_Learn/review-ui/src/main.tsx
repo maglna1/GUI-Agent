@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import iconUrl from "../assets/icon/tpsp_icon.svg?url";
+import iconUrl from "../assets/icon/tpsp_icon.png?url";
 import "./styles.css";
 
 // Set the window/taskbar favicon. In --app mode (puppeteer launcher) this
