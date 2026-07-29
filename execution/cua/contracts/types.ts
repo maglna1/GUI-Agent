@@ -53,6 +53,12 @@ export interface ShowuiTraceOperation {
   value?: string | null;
   key?: string | null;
   condition?: string | null;
+  /**
+   * Icon-click reference images: emitted by `apply_icon_decisions` when the
+   * user confirms a click was an icon click. The downstream `aiTap` YAML
+   * becomes `{ aiTap: { prompt, locate: { images: [{name, url}] } } }`.
+   */
+  images?: Array<{ name: string; url: string }> | null;
 }
 
 export interface ShowuiTraceStep {

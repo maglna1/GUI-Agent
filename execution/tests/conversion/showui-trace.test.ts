@@ -90,6 +90,49 @@ test('转换器只消费 operation，不根据其他自然语言字段猜测动�
   assert.equal((document.tasks as Array<Record<string, any>>)[0].flow[0].aiTap, originalOperation.prompt);
 });
 
+test('含 images 的 click operation 转 aiTap 对象形式（带 locate.images）', async () => {
+  const fixture = await prepare('icon-images-task');
+  const tracePath = path.join(fixture.taskRoot, 'source', 'showui-trace.json');
+  const trace = JSON.parse(await readFile(tracePath, 'utf8'));
+  const originalPrompt = trace.trajectory[0].caption.operation.prompt;
+  trace.trajectory[0].caption.operation.images = [
+    { name: 'ssrun', url: 'data:image/png;base64,iVBORw0KGgo=' },
+  ];
+  await writeFile(tracePath, JSON.stringify(trace), 'utf8');
+
+  const document = await readYamlDocument(await convertTrace(fixture.options));
+  const firstFlow = (document.tasks as Array<Record<string, any>>)[0].flow[0];
+
+  assert.deepEqual(firstFlow, {
+    aiTap: {
+      prompt: originalPrompt,
+      locate: {
+        images: [{ name: 'ssrun', url: 'data:image/png;base64,iVBORw0KGgo=' }],
+      },
+    },
+  });
+});
+
+test('含非法 url 的 images 会被丢弃，回退到 prompt 字符串形式', async () => {
+  const fixture = await prepare('icon-bad-url-task');
+  const tracePath = path.join(fixture.taskRoot, 'source', 'showui-trace.json');
+  const trace = JSON.parse(await readFile(tracePath, 'utf8'));
+  const originalPrompt = trace.trajectory[0].caption.operation.prompt;
+  trace.trajectory[0].caption.operation.images = [
+    { name: 'evil', url: 'https://evil.example/x.png' }, // bad: not data:
+    { name: '', url: 'data:image/png;base64,AAA' },      // bad: empty name
+    { name: 123 as unknown as string, url: 'data:image/png;base64,AAA' }, // bad: non-string name
+  ];
+  await writeFile(tracePath, JSON.stringify(trace), 'utf8');
+
+  const document = await readYamlDocument(await convertTrace(fixture.options));
+  const firstFlow = (document.tasks as Array<Record<string, any>>)[0].flow[0];
+
+  assert.deepEqual(firstFlow, {
+    aiTap: originalPrompt,
+  });
+});
+
 test('缺失 operation、定位提示和非法步骤不会写出半成品', async () => {
   for (const [task, mutate, message] of [
     ['missing-operation', (trace: any) => delete trace.trajectory[0].caption.operation, /operation/],

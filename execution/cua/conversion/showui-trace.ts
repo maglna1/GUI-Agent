@@ -99,7 +99,31 @@ function actionFromOperation(
 ): { action: JsonObject; input?: [string, TaskInputDefinition] } {
   if (operation.type === 'click' || operation.type === 'doubleClick') {
     const prompt = requiredOperationText(operation.prompt, 'prompt', step);
-    return { action: { [operation.type === 'click' ? 'aiTap' : 'aiDoubleClick']: prompt } };
+    const tapKey = operation.type === 'click' ? 'aiTap' : 'aiDoubleClick';
+    // When `images` are attached the VLM gets reference-icon inputs alongside
+    // the screen capture; emit the object form `aiTap: { prompt, locate }`.
+    // Otherwise keep the cheap string form.
+    const images = Array.isArray(operation.images) ? operation.images : [];
+    const cleanImages = images
+      .filter(
+        (e): e is { name: string; url: string } =>
+          typeof e?.name === 'string' &&
+          e.name !== '' &&
+          typeof e?.url === 'string' &&
+          e.url.startsWith('data:image/'),
+      )
+      .map((e) => ({ name: e.name, url: e.url }));
+    if (cleanImages.length > 0) {
+      return {
+        action: {
+          [tapKey]: {
+            prompt,
+            locate: { images: cleanImages },
+          },
+        },
+      };
+    }
+    return { action: { [tapKey]: prompt } };
   }
   if (operation.type === 'input') {
     const prompt = requiredOperationText(operation.prompt, 'prompt', step);
