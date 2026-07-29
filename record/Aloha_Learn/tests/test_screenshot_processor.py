@@ -292,7 +292,8 @@ class RequestComponentLabelsTest(unittest.TestCase):
         called_args, called_kwargs = p.call_args
         self.assertIn("/chat/completions", called_args[0])
         self.assertEqual(called_kwargs["json"]["model"], "gpt-4o")
-        self.assertEqual(called_kwargs["timeout"], 120)
+        # Default timeout is 300s; overridable via ALOHA_TRACE_TIMEOUT.
+        self.assertEqual(called_kwargs["timeout"], 300.0)
         msgs = called_kwargs["json"]["messages"]
         self.assertEqual(len(msgs), 2)
         # The user message carries the icon metadata + inline images.
@@ -302,6 +303,28 @@ class RequestComponentLabelsTest(unittest.TestCase):
             for c in content
         ), "content must include text metadata (without the LLM-provided label)")
         self.assertTrue(any(c.get("type") == "image_url" for c in content))
+
+    def test_aloha_trace_timeout_overrides_default(self):
+        """Setting ALOHA_TRACE_TIMEOUT changes the request timeout used by
+        screenshot_processor's icon-naming LLM call."""
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": "https://api.example.com/v1",
+            "OPENAI_MODEL": "gpt-4o",
+            "OPENAI_API_KEY": "sk-test",
+            "OPENAI_VERIFY_SSL": "true",
+            "ALOHA_TRACE_TIMEOUT": "600",
+        }, clear=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                screenshots_dir = Path(tmp)
+                self._setup_icon(screenshots_dir)
+                with patch("requests.post", return_value=self._mock_response(
+                    f'{{"{self.FILENAME}": "taskbar_search"}}'
+                )) as p:
+                    ext = VideoScreenshotExtractor()
+                    ext._request_component_labels(self._records(), screenshots_dir)
+
+        self.assertEqual(p.call_args[0][0].endswith("/chat/completions"), True)
+        self.assertEqual(p.call_args[1]["timeout"], 600.0)
 
     def test_raises_components_llm_error_on_http_failure(self):
         with patch.dict(os.environ, {

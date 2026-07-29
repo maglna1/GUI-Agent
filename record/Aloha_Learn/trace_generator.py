@@ -1,4 +1,5 @@
 import os, json, base64, re, time, requests, urllib3
+from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
@@ -41,6 +42,12 @@ class TraceGenerator:
             or "https://api.openai.com/v1"
         ).rstrip("/")
         self.openai_temperature = float(os.environ.get("ALOHA_TRACE_TEMPERATURE", "0.2"))
+        # Network timeouts. The OpenAI HTTP call below uses `timeout` (connect+read),
+        # but Claude passes connect/read separately.
+        raw_timeout = os.environ.get("ALOHA_TRACE_TIMEOUT")
+        self.openai_timeout = float(raw_timeout) if raw_timeout else 300.0  # was hardcoded 120s; too short for some Ark / Volcengine models on huge prompts.
+        self.claude_connect_timeout = float(os.environ.get("ALOHA_TRACE_CLAUDE_CONNECT_TIMEOUT", "10"))
+        self.claude_read_timeout = float(os.environ.get("ALOHA_TRACE_CLAUDE_READ_TIMEOUT", "300"))
         self.openai_verify_ssl = env_bool("OPENAI_VERIFY_SSL", True)
         if not self.openai_verify_ssl:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -118,6 +125,21 @@ class TraceGenerator:
             value = operation.get(key)
             if isinstance(value, str) and value.strip():
                 sanitized[key] = value.strip()
+
+        # Preserve icon-click image references injected by the icon-review
+        # workflow (see apply_icon_decisions). Each entry: {name, url}.
+        images = operation.get("images")
+        if isinstance(images, list) and images:
+            clean_images: list[dict] = []
+            for entry in images:
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("name")
+                url = entry.get("url")
+                if isinstance(name, str) and name and isinstance(url, str) and url.startswith("data:image/"):
+                    clean_images.append({"name": name, "url": url})
+            if clean_images:
+                sanitized["images"] = clean_images
 
         return sanitized
 
@@ -281,7 +303,7 @@ Overall Task: {overall_task}
             url,
             headers=headers,
             json=data,
-            timeout=120,
+            timeout=self.openai_timeout,
             verify=self.openai_verify_ssl,
         )
         r.raise_for_status()
@@ -311,15 +333,28 @@ Overall Task: {overall_task}
         data = {"model": self.claude_model,
                 "max_tokens": 1200,
                 "messages": [{"role": "user", "content": content}]}
-        r = requests.post(url, headers=headers, json=data, timeout=120)
+        r = requests.post(
+            url, headers=headers, json=data,
+            timeout=(self.claude_connect_timeout, self.claude_read_timeout),
+        )
         r.raise_for_status()
         return r.json()["content"][0]["text"]
 
     def generate_trace(self, recording_json_path: str,
                        screenshots_dir: str,
                        output_trace_path: str,
-                       overall_task: str = ""):
-        """Main pipeline: read log JSON, pair screenshots, call LLM, and save trace."""
+                       overall_task: str = "",
+                       library_roots: list[str] | None = None,
+                       run_icon_review: bool = False,
+                       icon_review_timeout_seconds: int = 1800,
+                       icon_review_decisions: dict | None = None,
+                       icon_review_decisions_path: Path | None = None):
+        """Main pipeline: read log JSON, pair screenshots, call LLM, and save trace.
+
+        icon_review_decisions: if pre-loaded from disk (e.g. from a prior run),
+        skip the icon-review window and use these. Otherwise the window pops.
+        icon_review_decisions_path: if set, decisions are persisted here as JSON.
+        """
         with open(recording_json_path, "r", encoding="utf-8") as f:
             items = json.load(f)
 
@@ -433,14 +468,148 @@ Overall Task: {overall_task}
                     f"{operation_error or 'Action 为空'}"
                 )
 
-            traj.append({"step_idx": step_idx, "caption": cap})
+            traj.append({
+                "step_idx": step_idx,
+                "timestamp": ts,
+                "coords": list(coords) if isinstance(coords, list) and coords else None,
+                "current_software": it.get("current_software", ""),
+                "caption": cap,
+            })
             step_idx += 1
             time.sleep(0.1)
 
         if not traj:
             raise RuntimeError("录制中没有可生成 trace 的操作步骤")
+
+        # ---- Icon-review workflow ----
+        # After LLM produced prompts, let the user mark which clicks are
+        # icon clicks (where a desktop / taskbar icon was clicked) and pick
+        # the matching label. The decision injects `images[]` into the
+        # operation so Midscene's VLM uses the icon as a reference image.
+        if run_icon_review:
+            from icon_review_server import run_icon_review_session
+            from icon_library import find_icon_by_label, load_icon_as_data_url
+
+            if icon_review_decisions is None:
+                if not library_roots:
+                    library_roots = []
+                # Build click metadata from LLM output: every "click" step
+                # is a candidate (doubleClick and wait are not). We forward
+                # the SC-action's timestamp/coords/software so the icon-review
+                # window can render the right screenshot crop.
+                clicks: list[dict] = []
+                for step in traj:
+                    cap = step.get("caption") or {}
+                    op = cap.get("operation") or {}
+                    if op.get("type") == "click":
+                        ts = step.get("timestamp")
+                        if not isinstance(ts, (int, float)):
+                            # Fallback: skip the click rather than crash the
+                            # icon-review window with a missing timestamp.
+                            continue
+                        coords = step.get("coords") or [None, None]
+                        clicks.append({
+                            "step_idx": step["step_idx"],
+                            "timestamp": ts,
+                            "coords": list(coords),
+                            "current_software": step.get("current_software", ""),
+                            "prompt": op.get("prompt", ""),
+                        })
+
+                # Run the icon-review window (blocks). Empty decisions is
+                # the timeout fallback (caller treats as no-op).
+                if clicks:
+                    icon_review_decisions = run_icon_review_session(
+                        clicks=clicks,
+                        library_roots=library_roots,
+                        screenshot_dir=Path(screenshots_dir),
+                        timeout_seconds=icon_review_timeout_seconds,
+                    )
+                else:
+                    icon_review_decisions = {}
+
+            # Persist for re-use on next run.
+            if icon_review_decisions_path is not None:
+                icon_review_decisions_path.parent.mkdir(parents=True, exist_ok=True)
+                icon_review_decisions_path.write_text(
+                    json.dumps(
+                        {
+                            "schemaVersion": 1,
+                            "decisions": icon_review_decisions,
+                            "libraryRoots": library_roots,
+                            "decidedAt": datetime.now().isoformat(timespec="seconds"),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+
+            # Inject images into matching click operations.
+            traj = apply_icon_decisions(traj, icon_review_decisions, library_roots)
+
         with open(output_trace_path, "w", encoding="utf-8") as f:
             json.dump({"trajectory": traj}, f, ensure_ascii=False, indent=2)
+
+
+def apply_icon_decisions(
+    traj: list[dict],
+    decisions: dict,
+    library_roots: list[str] | None = None,
+) -> list[dict]:
+    """Inject icon-reference images into click operations.
+
+    decisions: {step_idx_str: {"is_icon": bool, "label": str | None}}.
+    For every decision with is_icon=True and a non-empty label:
+      1. Resolve the PNG via find_icon_by_label(label, library_roots).
+      2. Encode as a data: URL via load_icon_as_data_url.
+      3. Inject [{name, url}] into step["caption"]["operation"]["images"].
+
+    Returns a new trajectory list (does not mutate input). Non-matching
+    steps pass through unchanged.
+    """
+    from icon_library import find_icon_by_label, load_icon_as_data_url
+
+    if not decisions:
+        return traj
+
+    roots = library_roots or []
+    out: list[dict] = []
+    for step in traj:
+        step_idx = step.get("step_idx")
+        decision = decisions.get(str(step_idx))
+        # Deep-copy so callers can diff input vs. output safely.
+        copied = json.loads(json.dumps(step, ensure_ascii=False))
+
+        if not decision or not decision.get("is_icon"):
+            out.append(copied)
+            continue
+        # Only click operations can be icon clicks — other ops don't carry
+        # an icon reference semantic (doubleClick arguably could, but the
+        # current scheme targets the primary click).
+        op = copied.get("caption", {}).get("operation") or {}
+        if op.get("type") != "click":
+            out.append(copied)
+            continue
+        label = (decision.get("label") or "").strip()
+        if not label:
+            out.append(copied)
+            continue
+        if not roots:
+            # No library roots configured. Pass through unchanged so a
+            # missing config doesn't silently break traces.
+            out.append(copied)
+            continue
+        icon_path = find_icon_by_label(label, roots)
+        if icon_path is None:
+            # Label not in any library root; keep the LLM prompt fallback.
+            out.append(copied)
+            continue
+        cap = copied.setdefault("caption", {})
+        op = cap.setdefault("operation", {})
+        op["images"] = [{"name": label, "url": load_icon_as_data_url(icon_path)}]
+        out.append(copied)
+    return out
 
 
 if __name__ == "__main__":
@@ -450,14 +619,16 @@ if __name__ == "__main__":
     parser.add_argument("--shots", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--task", default="")
-    parser.add_argument("--provider", default="openai", choices=["openai","claude"])
+    parser.add_argument("--provider", default="openai", choices=["openai", "claude"])
     parser.add_argument("--openai_model", default="gpt-4o")
     parser.add_argument("--claude_model", default="claude-sonnet-4-20250514")
     args = parser.parse_args()
 
-    tg = TraceGenerator(default_prompt_path="default_prompt.json",
-                        api_provider=args.provider,
-                        openai_model=args.openai_model,
-                        claude_model=args.claude_model,
-                        api_keys_path="config/api_keys.json")
+    tg = TraceGenerator(
+        default_prompt_path="default_prompt.json",
+        api_provider=args.provider,
+        openai_model=args.openai_model,
+        claude_model=args.claude_model,
+        api_keys_path="config/api_keys.json",
+    )
     tg.generate_trace(args.log, args.shots, args.out, overall_task=args.task)

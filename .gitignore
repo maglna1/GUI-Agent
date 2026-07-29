@@ -24,6 +24,7 @@ record/Aloha_Learn/projects/
 .idea/
 
 # User task data and run snapshots (CUA_DATA_ROOT should live outside the repo)
+execution/cua-data/
 cua-data/
 
 # Upstream ShowUI-Aloha demo assets not referenced by README

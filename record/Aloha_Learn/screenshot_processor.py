@@ -114,6 +114,14 @@ class VideoScreenshotExtractor:
 
         verify_ssl = os.environ.get("OPENAI_VERIFY_SSL", "true").lower() not in ("0", "false", "no")
 
+        # Timeout shared with trace_generator. Read timeout = 120s used to be
+        # hardcoded and was too short for slow models (e.g. Volcengine Ark
+        # `minimax-m3` answering big batched prompts). Default 300s.
+        try:
+            request_timeout = float(os.environ.get("ALOHA_TRACE_TIMEOUT", "300"))
+        except ValueError:
+            request_timeout = 300.0
+
         system_prompt = (
             "You label desktop UI click crops. For each input icon, return a "
             "snake_case content label (lowercase letters, digits, underscores "
@@ -159,7 +167,7 @@ class VideoScreenshotExtractor:
 
         try:
             r = requests.post(url, headers=headers, json=payload,
-                              timeout=120, verify=verify_ssl)
+                              timeout=request_timeout, verify=verify_ssl)
             r.raise_for_status()
             body = r.json()
             content_text = body["choices"][0]["message"]["content"]
