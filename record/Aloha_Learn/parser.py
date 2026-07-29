@@ -1,4 +1,5 @@
 # parser.py
+import json
 import os
 import glob
 from pathlib import Path
@@ -12,15 +13,25 @@ from trace_generator import TraceGenerator
 def _resolve_project_dir(project_name: str) -> Path:
     """
     Accept either a bare name ('Drag_0') or a full path.
-    If bare name, resolve to ./projects/{project_name}.
+
+    Lookup order:
+      1. <project_name> as-is (covers absolute or cwd-relative paths)
+      2. <cwd>/projects/<project_name>           (record/-style cwd)
+      3. <script_dir>/projects/<project_name>     (running from repo root)
     """
-    p = Path(project_name)
-    if p.exists():
-        return p.resolve()
-    cand = Path.cwd() / "projects" / project_name
-    if cand.exists():
-        return cand.resolve()
-    raise FileNotFoundError(f"Project folder not found. Tried: {p} and {cand}")
+    learn_dir = Path(__file__).resolve().parent
+    candidates = [
+        Path(project_name),
+        Path.cwd() / "projects" / project_name,
+        learn_dir / "projects" / project_name,
+    ]
+    for cand in candidates:
+        if cand.is_dir():
+            return cand.resolve()
+    raise FileNotFoundError(
+        "Project folder not found. Tried:\n  - "
+        + "\n  - ".join(str(c) for c in candidates)
+    )
 
 
 def _find_single_log(inputs_dir: Path) -> Path:
@@ -83,11 +94,35 @@ def run_pipeline(project_name: str) -> Path:
         claude_model="claude-sonnet-4-20250514",
         api_keys_path=str(learn_dir / "config" / "api_keys.json"),
     )
+
+    # Icon-review workflow knobs:
+    # - library_roots: where to scan for <label>.png. Default: this package's
+    #   `projects/` directory (sibling of the one running the pipeline).
+    # - run_icon_review: env RUN_ICON_REVIEW=0 disables the window for CI.
+    # - icon_review_decisions_path: persisted alongside the trace so re-runs
+    #   can skip the window if the user already decided.
+    library_roots = [str(learn_dir / "projects")]
+    run_icon_review = os.environ.get("RUN_ICON_REVIEW", "1") != "0"
+    force_icon_review = os.environ.get("FORCE_ICON_REVIEW", "0") == "1"
+    decisions_path = project_dir / f"{project_dir.name}_icon_review.json"
+
+    preloaded_decisions: dict | None = None
+    if decisions_path.exists() and not force_icon_review:
+        try:
+            payload = json.loads(decisions_path.read_text(encoding="utf-8"))
+            preloaded_decisions = payload.get("decisions") or {}
+        except (OSError, ValueError):
+            preloaded_decisions = None
+
     tg.generate_trace(
         recording_json_path=str(log_sc),
         screenshots_dir=str(screenshots_dir),
         output_trace_path=str(out_trace),
-        overall_task=""
+        overall_task="",
+        library_roots=library_roots,
+        run_icon_review=run_icon_review,
+        icon_review_decisions_path=decisions_path,
+        icon_review_decisions=preloaded_decisions,
     )
 
     print("=== Pipeline Complete ===")
