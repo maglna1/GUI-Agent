@@ -55,15 +55,18 @@ describe("ClickRow", () => {
       />
     );
 
-    const select = screen.getByLabelText(`选择 Row ${ROW_NUMBER}（步骤 7）的图标标签`) as HTMLSelectElement;
-    expect(select.disabled).toBe(false);
-    expect(select.value).toBe("ssrun");
+    // LabelPicker trigger button (has the aria-label).
+    const trigger = screen.getByLabelText(`选择 Row ${ROW_NUMBER}（步骤 7）的图标标签`) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(false);
 
-    await user.selectOptions(select, "chrome");
+    await user.click(trigger);
+    // Dropdown opens; click the "chrome" option.
+    const chromeOption = await screen.findByRole("button", { name: /chrome$/ });
+    await user.click(chromeOption);
     expect(onChange).toHaveBeenCalledWith({ is_icon: true, label: "chrome" });
   });
 
-  it("disables label select when is_icon is false", () => {
+  it("disables label picker when is_icon is false", () => {
     render(
       <ClickRow
         rowNumber={ROW_NUMBER}
@@ -74,11 +77,11 @@ describe("ClickRow", () => {
       />
     );
 
-    const select = screen.getByLabelText(`选择 Row ${ROW_NUMBER}（步骤 7）的图标标签`) as HTMLSelectElement;
-    expect(select.disabled).toBe(true);
+    const trigger = screen.getByLabelText(`选择 Row ${ROW_NUMBER}（步骤 7）的图标标签`) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
   });
 
-  it("disables label select when label library is empty", () => {
+  it("disables label picker when label library is empty", () => {
     render(
       <ClickRow
         rowNumber={ROW_NUMBER}
@@ -89,8 +92,8 @@ describe("ClickRow", () => {
       />
     );
 
-    const select = screen.getByLabelText(`选择 Row ${ROW_NUMBER}（步骤 7）的图标标签`) as HTMLSelectElement;
-    expect(select.disabled).toBe(true);
+    const trigger = screen.getByLabelText(`选择 Row ${ROW_NUMBER}（步骤 7）的图标标签`) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
   });
 
   it("renders screenshot, prompt, coords, and software", () => {

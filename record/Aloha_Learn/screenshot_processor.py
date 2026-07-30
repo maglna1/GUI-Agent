@@ -658,10 +658,20 @@ class VideoScreenshotExtractor:
         # Always run the human-in-the-loop review session after process_actions().
         # No env var needed: review UI is the single writer, and dest is always
         # <project_dir>/components_review_ui_mutimodal_memory_manual/.
+        # Exception: SKIP_COMPONENTS_REVIEW=1 (set by the unified pipeline
+        # orchestrator) skips both the LLM labeling and the review-ui popup,
+        # because the pipeline's Step 1 already does labeling in its own UI.
         records = self._collect_icon_records(actions, screenshots_dir)
         review_dest = project_dir / "components_review_ui_mutimodal_memory_manual"
+        skip_review = os.environ.get("SKIP_COMPONENTS_REVIEW", "0") == "1"
 
-        if records:
+        if records and skip_review:
+            # Pipeline mode: Step 1 already labeled icons; skip the popup so
+            # parser.py doesn't block waiting for a second window.
+            print("[review] SKIP_COMPONENTS_REVIEW=1; skipping review-ui popup")
+            meta["components_synced"] = False
+            meta["components_skipped"] = True
+        elif records:
             timestamp_keys = {
                 r.filename: f"record_memory_icon_{r.base.replace('.', '_')}_crop"
                 for r in records
