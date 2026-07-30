@@ -333,6 +333,28 @@ class Orchestrator:
         if not icons_dir.is_dir():
             self._halt_step(1, f"找不到 {icons_dir}；先跑 parser.py step 1+2")
 
+        # Clear the project's component library before re-naming. Multiple
+        # runs of the same project accumulate stale LLM-named PNGs (each run
+        # generates different names); clearing keeps the library tidy and
+        # matching exactly this run's icons. Only *.png are removed; the
+        # components.json (if any) is left untouched.
+        components_dir = (
+            project_dir
+            / "components_review_ui_mutimodal_memory_manual"
+            / "components"
+        )
+        if components_dir.is_dir():
+            cleared = 0
+            for stale in components_dir.glob("*.png"):
+                try:
+                    stale.unlink()
+                    cleared += 1
+                except OSError as e:
+                    self._append_log(1, f"无法删除 {stale.name}: {e}")
+            self._append_log(1, f"已清空 components/ 下 {cleared} 个旧图标")
+        else:
+            components_dir.mkdir(parents=True, exist_ok=True)
+
         icon_files = sorted(p for p in icons_dir.glob("*.png") if p.is_file())
         self._set_progress(1, 0, len(icon_files))
 
