@@ -368,7 +368,10 @@ class Orchestrator:
             records.append(SimpleNamespace(
                 filename=f.name,
                 action=meta.get("action", ""),
-                coords=meta.get("coords", []),
+                # coords must be a 2-element list; _request_component_labels
+                # accesses r.coords[0]/[1]. Default to [0, 0] when this icon
+                # has no matching LClick action (e.g. more icons than clicks).
+                coords=meta.get("coords") or [0, 0],
                 current_software=meta.get("current_software", ""),
                 base=f.stem,
             ))
@@ -400,11 +403,42 @@ class Orchestrator:
             json.dumps(self.state.step1_labels, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+        # Sync accepted icons into the project's component library so Step 3's
+        # LabelPicker (which scans components/) can see the newly-named icons.
+        # This replaces what run_review_session did in the legacy flow (which
+        # we skip via SKIP_COMPONENTS_REVIEW=1 to avoid a second popup).
+        components_dir = (
+            project_dir
+            / "components_review_ui_mutimodal_memory_manual"
+            / "components"
+        )
+        components_dir.mkdir(parents=True, exist_ok=True)
+        icons_dir = screenshots_dir / "icons"
+        synced = 0
+        for filename, label in self.state.step1_labels.items():
+            label = (label or "").strip()
+            if not label:
+                continue
+            src = icons_dir / filename
+            if not src.is_file():
+                self._append_log(1, f"跳过同步 {filename}：源文件不存在")
+                continue
+            dst = components_dir / f"{label}.png"
+            try:
+                import shutil as _shutil
+                _shutil.copy2(src, dst)
+                synced += 1
+            except OSError as e:
+                self._append_log(1, f"同步 {filename} -> {label}.png 失败: {e}")
+        self._append_log(1, f"已同步 {synced} 个图标到 {components_dir.name}/components/")
+
         self._set_step_status(1, StepStatus.SUCCEEDED)
         self.publish({
             "type": "step1_complete",
             "labels": self.state.step1_labels,
             "saved_to": str(labels_file),
+            "synced_icons": synced,
             "snapshot": self.state.as_dict(),
         })
 
