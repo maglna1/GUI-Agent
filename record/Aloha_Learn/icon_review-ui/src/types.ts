@@ -39,3 +39,66 @@ export interface FinishResult {
   decided: number;
   total: number;
 }
+
+// -- Pipeline (unified 4-step orchestrator) -------------------------------
+
+export type StepStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting'
+  | 'succeeded'
+  | 'failed'
+  | 'skipped';
+
+export interface StepState {
+  status: StepStatus;
+  progress_current: number;
+  progress_total: number;
+  log_lines: string[];
+  error: string | null;
+}
+
+export interface StepDef {
+  id: number;
+  key: string;
+  label: string;
+}
+
+export interface PipelineState {
+  run_id: string;
+  project: string;
+  scene: string;
+  task: string;
+  goal: string;
+  library_roots: string[];
+  data_root: string | null;
+  current_step: number; // 0 = idle, 1-4 = step, -1 = errored
+  started_at: string;
+  finished_at: string;
+  steps: Record<string, StepState>;
+  step1_labels: Record<string, string>;
+  step1_llm_labels: Record<string, string>;
+  step3_decisions: Record<string, Decision>;
+  step4_results: Record<string, {
+    status: string;
+    exit_code: number;
+    stdout_tail: string;
+  }>;
+  step_defs: StepDef[];
+}
+
+export interface PipelineEvent {
+  type:
+    | 'state'
+    | 'log'
+    | 'progress'
+    | 'step1_complete_llm'
+    | 'step1_complete'
+    | 'step3_complete'
+    | 'step4_substep'
+    | 'actual_task_started'
+    | 'actual_task_finished'
+    | 'actual_task_error'
+    | 'keepalive';
+  [key: string]: unknown;
+}

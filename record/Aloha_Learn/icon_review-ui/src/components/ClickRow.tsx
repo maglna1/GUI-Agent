@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Click, Decision } from "../types";
 import { getIcon } from "../api/client";
+import { LabelPicker } from "./LabelPicker";
 
 interface Props {
   /** 1-based visual row number (top-to-bottom). Shown alongside step_idx
@@ -10,10 +11,12 @@ interface Props {
   decision: Decision;
   labels: string[];
   onChange: (next: Decision) => void;
+  /** Read-only mode (history view): hide all edit controls. */
+  readOnly?: boolean;
 }
 
 function formatCoord(c: number | null): string {
-  return c === null || Number.isNaN(c) ? "—" : String(c);
+  return c === null || Number.isNaN(c) ? "-" : String(c);
 }
 
 function formatTs(ts: number): string {
@@ -24,7 +27,7 @@ function formatSoftware(s: string): string {
   return s || "(未记录)";
 }
 
-export function ClickRow({ rowNumber, click, decision, labels, onChange }: Props) {
+export function ClickRow({ rowNumber, click, decision, labels, onChange, readOnly }: Props) {
   const [preview, setPreview] = useState<string | null>(null);
 
   // Fetch a tiny preview of the icon once a label is chosen. Cache-bust by
@@ -75,51 +78,59 @@ export function ClickRow({ rowNumber, click, decision, labels, onChange }: Props
         </div>
       </div>
       <div className="click-row-controls">
-        <label className="click-row-toggle">
-          <input
-            type="checkbox"
-            checked={decision.is_icon}
-            onChange={(e) => {
-              const isIcon = e.target.checked;
-              onChange({
-                is_icon: isIcon,
-                label: isIcon ? decision.label : "",
-              });
-            }}
-            aria-label={`标记 Row ${rowNumber}（步骤 ${click.step_idx}）为图标点击`}
-          />
-          是图标点击
-        </label>
-        <label className="click-row-label-picker">
-          <span>对应图标库标签</span>
-          <select
-            disabled={!decision.is_icon || labels.length === 0}
-            value={decision.label}
-            onChange={(e) =>
-              onChange({ is_icon: true, label: e.target.value })
-            }
-            aria-label={`选择 Row ${rowNumber}（步骤 ${click.step_idx}）的图标标签`}
-          >
-            <option value="">
-              {labels.length === 0 ? "(图标库为空)" : "— 选择 —"}
-            </option>
-            {labels.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-          {decision.is_icon && decision.label && (
-            <div className="click-row-label-picker-icon">
-              {preview ? (
-                <img src={preview} alt={decision.label} />
-              ) : (
-                <span className="click-row-thumb-fallback">…</span>
-              )}
-              <code>{decision.label}</code>
+        {readOnly ? (
+          <div className="click-row-readonly">
+            {decision.is_icon ? (
+              <>
+                <span className="click-row-readonly-badge click-row-readonly-badge--icon">
+                  ✓ 图标点击
+                </span>
+                {decision.label && (
+                  <div className="click-row-label-picker-icon">
+                    {preview ? (
+                      <img src={preview} alt={decision.label} />
+                    ) : (
+                      <span className="click-row-thumb-fallback">…</span>
+                    )}
+                    <code>{decision.label}</code>
+                  </div>
+                )}
+              </>
+            ) : (
+              <span className="click-row-readonly-badge click-row-readonly-badge--normal">
+                普通点击
+              </span>
+            )}
+          </div>
+        ) : (
+          <>
+            <label className="click-row-toggle">
+              <input
+                type="checkbox"
+                checked={decision.is_icon}
+                onChange={(e) => {
+                  const isIcon = e.target.checked;
+                  onChange({
+                    is_icon: isIcon,
+                    label: isIcon ? decision.label : "",
+                  });
+                }}
+                aria-label={`标记 Row ${rowNumber}（步骤 ${click.step_idx}）为图标点击`}
+              />
+              是图标点击
+            </label>
+            <div className="click-row-label-picker">
+              <span>对应图标库标签</span>
+              <LabelPicker
+                labels={labels}
+                value={decision.label}
+                disabled={!decision.is_icon || labels.length === 0}
+                onChange={(label) => onChange({ is_icon: true, label })}
+                ariaLabel={`选择 Row ${rowNumber}（步骤 ${click.step_idx}）的图标标签`}
+              />
             </div>
-          )}
-        </label>
+          </>
+        )}
       </div>
     </div>
   );
