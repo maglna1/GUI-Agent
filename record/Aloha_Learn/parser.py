@@ -57,28 +57,45 @@ def run_pipeline(project_name: str) -> Path:
       2) extract screenshots + crops -> {project}_processed_log_sc.json
       3) LLM trace generation -> {project}_trace.json
 
-    Only input: project_name (string). Returns final trace path.
+    Env flags (used by the unified pipeline window to split prep vs trace):
+      PARSER_PREP_ONLY=1   -> run step 1+2 only (generate screenshots + icon
+                              crops), skip step 3. Lets the pipeline name
+                              icons before trace generation.
+      PARSER_TRACE_ONLY=1  -> run step 3 only (assumes step 1+2 already ran).
+
+    Only input: project_name (string). Returns final trace path (or processed
+    log path when prep-only).
     """
     learn_dir = Path(__file__).resolve().parent
     load_dotenv(learn_dir.parent / ".env", override=True)
     project_dir = _resolve_project_dir(project_name)
-    inputs_dir = project_dir / "inputs"
-    if not inputs_dir.exists():
-        raise FileNotFoundError(f"Inputs directory not found: {inputs_dir}")
 
-    # ---------- Step 1: process raw log -> processed log ----------
-    raw_log = _find_single_log(inputs_dir)
+    prep_only = os.environ.get("PARSER_PREP_ONLY", "0") == "1"
+    trace_only = os.environ.get("PARSER_TRACE_ONLY", "0") == "1"
+
     processed_log_path = project_dir / f"{project_dir.name}_processed_log.json"
+    screenshots_dir: str = str(project_dir / "screenshots")
 
-    lp = LogProcessor()
-    # keep default typing-delay behavior (5.0s) to align with existing logic
-    lp.process_log_file(str(raw_log), str(processed_log_path), time_threshold=5.0)
+    if not trace_only:
+        # ---------- Step 1: process raw log -> processed log ----------
+        inputs_dir = project_dir / "inputs"
+        if not inputs_dir.exists():
+            raise FileNotFoundError(f"Inputs directory not found: {inputs_dir}")
+        raw_log = _find_single_log(inputs_dir)
 
-    # ---------- Step 2: screenshots + scaled coords -> *_processed_log_sc.json ----------
-    vse = VideoScreenshotExtractor()
-    # This function expects the processed log with the exact filename in the project root.
-    # It will discover the video and create {project}_processed_log_sc.json and /screenshots.
-    _, screenshots_dir, meta = vse.process_project(str(project_dir))
+        lp = LogProcessor()
+        lp.process_log_file(str(raw_log), str(processed_log_path), time_threshold=5.0)
+
+        # ---------- Step 2: screenshots + scaled coords -> *_processed_log_sc.json ----------
+        vse = VideoScreenshotExtractor()
+        _, screenshots_dir, meta = vse.process_project(str(project_dir))
+
+    if prep_only:
+        print("=== Prep Complete (PARSER_PREP_ONLY=1, step 3 skipped) ===")
+        print(f"Project: {project_dir.name}")
+        print(f"Processed log: {processed_log_path.name}")
+        print(f"Screenshots dir: {Path(screenshots_dir).name}")
+        return processed_log_path
 
     # ---------- Step 3: generate LLM trace -> {project}_trace.json ----------
     log_sc = project_dir / f"{project_dir.name}_processed_log_sc.json"
@@ -89,18 +106,12 @@ def run_pipeline(project_name: str) -> Path:
 
     tg = TraceGenerator(
         default_prompt_path=str(learn_dir / "default_prompt.json"),
-        api_provider="openai",            # or "claude" — adjust here if needed
+        api_provider="openai",
         openai_model=os.environ.get("OPENAI_MODEL", "gpt-4o"),
         claude_model="claude-sonnet-4-20250514",
         api_keys_path=str(learn_dir / "config" / "api_keys.json"),
     )
 
-    # Icon-review workflow knobs:
-    # - library_roots: where to scan for <label>.png. Default: this package's
-    #   `projects/` directory (sibling of the one running the pipeline).
-    # - run_icon_review: env RUN_ICON_REVIEW=0 disables the window for CI.
-    # - icon_review_decisions_path: persisted alongside the trace so re-runs
-    #   can skip the window if the user already decided.
     library_roots = [str(learn_dir / "projects")]
     run_icon_review = os.environ.get("RUN_ICON_REVIEW", "1") != "0"
     force_icon_review = os.environ.get("FORCE_ICON_REVIEW", "0") == "1"

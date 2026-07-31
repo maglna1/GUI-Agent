@@ -37,6 +37,7 @@ from pipeline_orchestrator import (
     create_orchestrator,
     EventBus,
     _build_clicks_from_project,
+    _detect_data_root,
 )
 
 # Static hosting for the unified UI. Reuse icon_review-ui/ build output for

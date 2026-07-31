@@ -473,6 +473,11 @@ Overall Task: {overall_task}
                 "timestamp": ts,
                 "coords": list(coords) if isinstance(coords, list) and coords else None,
                 "current_software": it.get("current_software", ""),
+                # Crop filename (stripped of "screenshots/" prefix) used for the
+                # LLM call. Stored so downstream (pipeline Step 3) can show the
+                # exact screenshot the prompt describes, without timestamp
+                # matching that can mismatch on duplicate/precision issues.
+                "screenshot": crop if isinstance(crop, str) else "",
                 "caption": cap,
             })
             step_idx += 1
