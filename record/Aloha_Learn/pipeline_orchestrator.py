@@ -330,8 +330,17 @@ class Orchestrator:
         project_dir = Path(self.state.project)
         screenshots_dir = project_dir / "screenshots"
         icons_dir = screenshots_dir / "icons"
-        if not icons_dir.is_dir():
-            self._halt_step(1, f"找不到 {icons_dir}；先跑 parser.py step 1+2")
+
+        # If the project has no icon crops yet (newly recorded project), run
+        # parser.py step 1+2 first to generate screenshots + icons. This is
+        # the "prep" phase; PARSER_PREP_ONLY=1 skips step 3 (trace), and
+        # SKIP_COMPONENTS_REVIEW=1 avoids the legacy review-ui popup.
+        if not icons_dir.is_dir() or not any(icons_dir.glob("*.png")):
+            self._append_log(1, "未找到图标 crop，先跑 parser.py step 1+2 生成截图...")
+            self._run_parser_prep(project_dir)
+            # Re-check after prep.
+            if not icons_dir.is_dir() or not any(icons_dir.glob("*.png")):
+                self._halt_step(1, f"prep 完成后仍找不到 {icons_dir} 下的图标")
 
         # Clear the project's component library before re-naming. Multiple
         # runs of the same project accumulate stale LLM-named PNGs (each run
@@ -464,6 +473,31 @@ class Orchestrator:
             "snapshot": self.state.as_dict(),
         })
 
+    def _run_parser_prep(self, project_dir: Path) -> None:
+        """Run parser.py step 1+2 (log + screenshots + icon crops) without
+        step 3 (trace). Used at the start of Step 1 for newly-recorded
+        projects that have no screenshots/icons yet. Streams stdout to the
+        Step 1 log panel."""
+        env = os.environ.copy()
+        env["PARSER_PREP_ONLY"] = "1"
+        env["SKIP_COMPONENTS_REVIEW"] = "1"
+        env["PYTHONUNBUFFERED"] = "1"
+        repo = Path(__file__).resolve().parents[2]
+        args = [
+            sys.executable,
+            str(repo / "record" / "Aloha_Learn" / "parser.py"),
+            str(project_dir),
+        ]
+        self._append_log(1, f"prep: {' '.join(args[-2:])}")
+        rc, _ = _run_with_log(
+            args,
+            cwd=str(repo),
+            env=env,
+            on_line=lambda ln: self._append_log(1, ln),
+        )
+        if rc != 0:
+            self._halt_step(1, f"parser.py prep 退出码 {rc}")
+
     def _run_step2(self) -> None:
         self.state.current_step = 2
         self._set_step_status(2, StepStatus.RUNNING)
@@ -499,6 +533,7 @@ class Orchestrator:
         env = os.environ.copy()
         env["RUN_ICON_REVIEW"] = "0"
         env["SKIP_COMPONENTS_REVIEW"] = "1"  # Step 1 already labeled icons; skip parser.py's review-ui popup
+        env["PARSER_TRACE_ONLY"] = "1"  # step 1+2 already ran in Step 1 prep; only generate trace
         env["PYTHONUNBUFFERED"] = "1"  # stream subprocess stdout in real time
         repo = Path(__file__).resolve().parents[2]
         cwd = str(repo)
@@ -779,45 +814,58 @@ class Orchestrator:
 
 
 def _build_clicks_from_project(project: str) -> tuple[list[dict[str, Any]], Optional[str]]:
-    """Re-derive LClick metadata from a project's processed-log SC JSON.
+    """Build click metadata for Step 3 from the project's trace.json.
 
-    Used by both the orchestrator (to feed the icon_review session) and the
-    HTTP server (to expose /api/pipeline/clicks for the Step 3 view).
+    IMPORTANT: step_idx comes from the TRACE trajectory (1-based, after
+    CONFIG/Active-Window filtering) - NOT from the SC log array index. The
+    SC log includes skipped actions, so using its index would offset
+    decisions by 1+ and inject each step's images into the wrong step
+    (apply_icon_decisions matches by trace step_idx).
+
+    The screenshot filename is read directly from the trace step
+    (trace_generator stores the exact crop the LLM saw), so the prompt and
+    screenshot in each row are guaranteed to describe the same action.
+
     Returns (clicks, error_message); on success error_message is None.
     """
     project_dir = Path(project)
-    sc_log = project_dir / f"{project_dir.name}_processed_log_sc.json"
-    if not sc_log.exists():
-        return [], f"缺少 {sc_log}；先跑 parser.py step 1+2"
+    trace_path = project_dir / f"{project_dir.name}_trace.json"
+    if not trace_path.exists():
+        return [], f"缺少 {trace_path}；先跑 Step 2"
+
     try:
-        actions = json.loads(sc_log.read_text(encoding="utf-8"))
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
     except Exception as e:
-        return [], f"无法解析 sc log: {e}"
+        return [], f"无法解析 trace.json: {e}"
+    traj = trace.get("trajectory") if isinstance(trace, dict) else None
+    if not isinstance(traj, list):
+        return [], "trace.json trajectory 格式异常"
+
     clicks: list[dict[str, Any]] = []
-    if not isinstance(actions, list):
-        return [], f"{sc_log} 格式异常"
-    for idx, a in enumerate(actions):
-        if not isinstance(a, dict):
+    for step in traj:
+        if not isinstance(step, dict):
             continue
-        if not (a.get("action") or "").startswith("LClick at"):
+        cap = step.get("caption") or {}
+        op = cap.get("operation") or {}
+        if op.get("type") != "click":
             continue
-        coords = a.get("coords") or []
-        if isinstance(coords, list) and coords:
-            first = coords[0] if isinstance(coords[0], dict) else {}
-            x, y = first.get("x"), first.get("y")
+        step_idx = step.get("step_idx")
+        ts = step.get("timestamp", 0)
+        # coords in trace is [{"x":..,"y":..}] (from SC log); normalize to [x, y].
+        raw_coords = step.get("coords")
+        if isinstance(raw_coords, list) and raw_coords and isinstance(raw_coords[0], dict):
+            coords = [raw_coords[0].get("x"), raw_coords[0].get("y")]
         else:
-            x, y = None, None
-        # screenshot path: prefer crop, fall back to full. Strip any
-        # "screenshots/" prefix the recorder may have written.
-        shot = a.get("screenshot_crop") or a.get("screenshot_full") or a.get("screenshot") or ""
-        if isinstance(shot, str) and shot.startswith("screenshots/"):
-            shot = shot[len("screenshots/"):]
+            coords = [None, None]
+        # Screenshot filename stored by trace_generator (the exact crop the
+        # LLM described) - no timestamp matching.
+        shot = step.get("screenshot") or ""
         clicks.append({
-            "step_idx": idx,
-            "timestamp": a.get("timestamp", 0),
-            "coords": [x, y],
-            "current_software": a.get("current_software", ""),
-            "prompt": "",
+            "step_idx": step_idx,
+            "timestamp": ts,
+            "coords": coords,
+            "current_software": step.get("current_software", ""),
+            "prompt": op.get("prompt", ""),
             "screenshot_url": f"/api/screenshot/{shot}" if shot else "",
         })
     return clicks, None
@@ -839,7 +887,7 @@ def _detect_data_root(execution_dir: Path) -> Optional[str]:
     return None
 
 
-def _run_with_log(args: list[str], cwd: str, on_line: Callable[[str], None]) -> tuple[int, str]:
+def _run_with_log(args: list[str], cwd: str, on_line: Callable[[str], None], env: dict | None = None) -> tuple[int, str]:
     """Run subprocess; stream stdout line by line; return (exit_code, stdout tail)."""
     try:
         # encoding=utf-8 + errors=replace: subprocess output (npm/tsx/parser.py)
@@ -847,6 +895,7 @@ def _run_with_log(args: list[str], cwd: str, on_line: Callable[[str], None]) -> 
         # UnicodeDecodeError on those bytes.
         proc = subprocess.Popen(
             args, cwd=cwd,
+            env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1,
             encoding="utf-8", errors="replace",
